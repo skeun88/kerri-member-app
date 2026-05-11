@@ -22,8 +22,8 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "your-apple-id@email.com",
-        "ascAppId": "your-app-store-connect-app-id"
+        "appleId": "karen@kibbl.ai",
+        "ascAppId": "6768249275"
       }
     }
   }
