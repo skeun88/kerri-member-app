@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "KERRI Member",
+    "slug": "kerri-member",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "bundleIdentifier": "com.kerri.member",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.kerri.member"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "kerri-member",
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
