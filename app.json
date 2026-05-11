@@ -14,7 +14,10 @@
     },
     "ios": {
       "bundleIdentifier": "com.kerri.member",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.kerri.member"
@@ -26,6 +29,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "813fa498-10e9-4308-a7e6-da20197d1ec2"
+      }
+    }
   }
 }
