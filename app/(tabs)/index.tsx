@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } 
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 interface MemberInfo {
@@ -30,15 +30,8 @@ export default function HomeScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 내 회원 정보 (coach_id 기반으로 연결된 member 찾기)
-    const { data: memberData } = await supabase
-      .from('members').select('*').eq('id', user.id).maybeSingle();
-
-    // user.email로 members 테이블에서 찾기 (회원은 member row의 email과 매칭)
-    const { data: memberByEmail } = await supabase
-      .from('members').select('*').eq('email', user.email).maybeSingle();
-
-    const myMember = memberData || memberByEmail;
+    // 내 회원 정보 (이메일 → auth id → 코치계정 테스트 순으로 fallback)
+    const myMember = await getMyMemberRow();
     if (myMember) {
       setMember(myMember);
       // 코치 정보

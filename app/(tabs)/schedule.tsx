@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 interface Lesson {
@@ -44,9 +44,8 @@ export default function ScheduleScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 내 member row 찾기
-    const { data: mem } = await supabase.from('members').select('id, remaining_credits')
-      .eq('email', user.email).maybeSingle();
+    // 내 member row 찾기 (이메일→id→코치계정 순 fallback)
+    const mem = await getMyMemberRow();
     if (!mem) return;
     setMemberId(mem.id);
     setRemainingCredits(mem.remaining_credits ?? 0);
