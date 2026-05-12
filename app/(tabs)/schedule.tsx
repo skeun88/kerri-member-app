@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Alert, Modal, ActivityIndicator,
+  RefreshControl, Alert, Modal, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +21,7 @@ interface Payment {
 interface MemberInfo {
   id: string; name: string; remaining_credits: number; total_credits: number;
   fixed_schedule_days?: number[]; fixed_schedule_times?: Record<string, string[]>;
-  fixed_schedule_time?: string; lesson_package_id?: string; coach_id: string;
+  fixed_schedule_time?: string; lesson_package_id?: string; coach_id: string; fixed_lesson_duration?: number;
 }
 
 const DAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
@@ -42,7 +42,211 @@ function getDDay(dateStr: string) {
   return { label: `D+${Math.abs(diff)}`, urgent: true };
 }
 
-          <MakeupTab memberId={member?.id ?? null} coachId={member?.coach_id ?? null} lessonDuration={member?.fixed_lesson_duration ?? 60} />
+
+interface LessonRequest {
+  id: string; requested_date: string; start_time: string; end_time: string; status: string; message?: string;
+}
+
+function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|null; coachId: string|null; lessonDuration: number }) {
+  const now = new Date();
+  const [calMonth, setCalMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const [busySlots, setBusySlots] = useState<{ date: string; startMin: number; endMin: number }[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [myRequests, setMyRequests] = useState<LessonRequest[]>([]);
+  const [bookingModal, setBookingModal] = useState(false);
+  const [bookingSlot, setBookingSlot] = useState<string | null>(null);
+  const [bookingMsg, setBookingMsg] = useState('');
+  const [sending, setSending] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
+  const todayStr = todayKST();
+
+  useEffect(() => {
+    if (!coachId) return;
+    loadBusy();
+    loadMyRequests();
+  }, [coachId, calMonth.year, calMonth.month]);
+
+  async function loadBusy() {
+    if (!coachId) return;
+    setLoadingSlots(true);
+    const firstDay = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-01`;
+    const lastDay = new Date(calMonth.year, calMonth.month+1, 0);
+    const lastDayStr = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
+    const { data } = await supabase.from('lessons').select('date, start_time, end_time')
+      .eq('coach_id', coachId).gte('date', firstDay).lte('date', lastDayStr);
+    setBusySlots((data ?? []).map((l: any) => ({
+      date: l.date,
+      startMin: tMin(l.start_time),
+      endMin: tMin(l.end_time),
+    })));
+    setLoadingSlots(false);
+  }
+
+  async function loadMyRequests() {
+    if (!memberId) return;
+    const { data } = await supabase.from('lesson_requests').select('*')
+      .eq('member_id', memberId).order('created_at', { ascending: false });
+    setMyRequests(data ?? []);
+  }
+
+  function tMin(t: string) {
+    const [h, m] = t.slice(0, 5).split(':').map(Number);
+    return h * 60 + m;
+  }
+  function mStr(m: number) {
+    return String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+  }
+
+  function handleDateSelect(dateStr: string) {
+    if (dateStr < todayStr) return;
+    setSelectedDate(dateStr);
+    const dayBusy = busySlots.filter(s => s.date === dateStr);
+    const slots: string[] = [];
+    for (let h = 6; h < 22; h++) {
+      for (const m of [0, 30]) {
+        const start = h * 60 + m;
+        const end = start + lessonDuration;
+        if (end > 22 * 60) continue;
+        const free = !dayBusy.some(b => start < b.endMin && end > b.startMin);
+        if (free) slots.push(mStr(start));
+      }
+    }
+    setAvailableSlots(slots);
+  }
+
+  async function submitRequest() {
+    if (!bookingSlot || !memberId || !coachId || sending) return;
+    setSending(true);
+    const startMin = tMin(bookingSlot + ':00');
+    const endMin = startMin + lessonDuration;
+    const { error } = await supabase.from('lesson_requests').insert({
+      coach_id: coachId, member_id: memberId,
+      requested_date: selectedDate,
+      start_time: bookingSlot + ':00',
+      end_time: mStr(endMin) + ':00',
+      message: bookingMsg.trim() || null,
+      status: 'pending',
+    });
+    setSending(false);
+    if (error) { Alert.alert('오류', '예약 요청 실패'); return; }
+    setBookingModal(false);
+    setBookingSlot(null);
+    setBookingMsg('');
+    Alert.alert('완료', '코치님께 레슨 예약 요청을 보냈어요! 🎾');
+    loadMyRequests();
+  }
+
+  const busyDateSet = new Set(busySlots.map(s => s.date));
+
+  return (
+    <View>
+      <CalendarView
+        year={calMonth.year} month={calMonth.month}
+        selectedDate={selectedDate ?? ''}
+        lessonDates={busyDateSet}
+        onSelectDate={handleDateSelect}
+        onPrevMonth={() => setCalMonth(p => {
+          const m = p.month - 1; return m < 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: m };
+        })}
+        onNextMonth={() => setCalMonth(p => {
+          const m = p.month + 1; return m > 11 ? { year: p.year + 1, month: 0 } : { year: p.year, month: m };
+        })}
+      />
+
+      <View style={s.legendRow}>
+        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: '#aaa' }]} /><Text style={s.legendText}>예약됨</Text></View>
+        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: Colors.success }]} /><Text style={s.legendText}>예약 가능</Text></View>
+      </View>
+
+      {loadingSlots && <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} />}
+
+      {selectedDate && !loadingSlots && (
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>
+            {new Date(selectedDate+'T00:00:00').toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'short'})} 가능한 시간
+          </Text>
+          {availableSlots.length === 0 ? (
+            <View style={s.empty}>
+              <Ionicons name="time-outline" size={32} color={Colors.iconMuted} />
+              <Text style={s.emptyText}>이 날은 빈 시간이 없어요</Text>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {availableSlots.map(slot => (
+                <TouchableOpacity key={slot}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.success + '18', borderWidth: 1, borderColor: Colors.success }}
+                  onPress={() => { setBookingSlot(slot); setBookingModal(true); }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.success }}>{slot}</Text>
+                  <Text style={{ fontSize: 10, color: Colors.success + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      {myRequests.length > 0 && (
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>내 예약 요청</Text>
+          {myRequests.slice(0, 5).map(req => (
+            <View key={req.id} style={[s.upcomingCard, {
+              borderLeftWidth: 4,
+              borderLeftColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.success : Colors.destructive,
+            }]}>
+              <View style={s.upcomingInfo}>
+                <Text style={s.upcomingTitle}>{req.requested_date} {req.start_time.slice(0,5)}</Text>
+                <Text style={s.upcomingDate}>{
+                  req.status === 'pending' ? '⏳ 코치 확인 중' :
+                  req.status === 'accepted' ? '✅ 수락됨' : '❌ 거절됨'
+                }</Text>
+              </View>
+              <View style={[s.todayBadge, {
+                backgroundColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.success : Colors.destructive
+              }]}>
+                <Text style={s.todayText}>{
+                  req.status === 'pending' ? '대기' : req.status === 'accepted' ? '수락' : '거절'
+                }</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Modal visible={bookingModal} transparent animationType="slide" onRequestClose={() => setBookingModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <Text style={s.modalTitle}>레슨 예약 요청</Text>
+            <Text style={s.modalDate}>
+              {selectedDate && new Date(selectedDate+'T00:00:00').toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'long'})}
+              {'  '}{bookingSlot} ({lessonDuration}분)
+            </Text>
+            <Text style={[s.sectionTitle, { fontSize: 13, marginBottom: 6 }]}>전달 메시지 (선택)</Text>
+            <TextInput
+              style={{ backgroundColor: Colors.mutedBg, borderRadius: Radius.md, padding: 12, fontSize: 14, color: Colors.foreground, minHeight: 80, marginBottom: 16, textAlignVertical: 'top', borderWidth: 1, borderColor: Colors.border }}
+              placeholder="코치님께 전달할 내용"
+              placeholderTextColor={Colors.placeholder}
+              value={bookingMsg}
+              onChangeText={setBookingMsg}
+              multiline
+            />
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={[s.modalCloseBtn, { flex: 1, backgroundColor: Colors.mutedBg }]} onPress={() => setBookingModal(false)}>
+                <Text style={[s.modalCloseBtnText, { color: Colors.navy }]}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.modalCloseBtn, { flex: 1 }]} onPress={submitRequest} disabled={sending}>
+                {sending ? <ActivityIndicator color="#fff" /> : <Text style={s.modalCloseBtnText}>예약 요청</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
 // ── 커스텀 달력 ──────────────────────────────────────────
 function CalendarView({
   year, month, selectedDate, lessonDates,
@@ -308,12 +512,9 @@ export default function ScheduleScreen() {
           </>
         )}
 
-        {/* ── 보강 탭 ── */}
+        {/* ── 레슨 가능 시간 탭 ── */}
         {tab === 'makeup' && (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>보강 가능 시간</Text>
-            <MakeupTab memberId={member?.id ?? null} coachId={member?.coach_id ?? null} lessonDuration={member?.fixed_lesson_duration ?? 60} />
-          </View>
+          <MakeupTab memberId={member?.id ?? null} coachId={member?.coach_id ?? null} lessonDuration={member?.fixed_lesson_duration ?? 60} />
         )}
 
         {/* ── 결제 탭 ── */}

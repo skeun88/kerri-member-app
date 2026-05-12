@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
   TouchableOpacity, KeyboardAvoidingView, Platform,
-  ActivityIndicator, SafeAreaView,
+  ActivityIndicator, SafeAreaView, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,12 +71,17 @@ export default function CoachChatScreen() {
   }, [memberId]);
 
   async function send() {
-    if (!input.trim() || !memberId || !coachId || sending) return;
+    if (!input.trim() || sending) return;
+    if (!memberId || !coachId) {
+      Alert.alert('오류', '회원 정보를 불러올 수 없어요. 앱을 다시 시작해주세요.');
+      return;
+    }
     const text = input.trim();
     setInput('');
     setSending(true);
-    await supabase.from('messages').insert({ coach_id: coachId, member_id: memberId, sender_type: 'member', content: text });
+    const { error } = await supabase.from('messages').insert({ coach_id: coachId, member_id: memberId, sender_type: 'member', content: text });
     setSending(false);
+    if (error) Alert.alert('전송 실패', error.message);
   }
 
   function renderMsg({ item, index }: { item: Msg; index: number }) {
