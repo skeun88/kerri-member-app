@@ -334,6 +334,7 @@ export default function ScheduleScreen() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [pkgDuration, setPkgDuration] = useState(60);
   const [packageTitle, setPackageTitle] = useState('');
 
   const today = todayKST();
@@ -350,10 +351,13 @@ export default function ScheduleScreen() {
     if (!mem) { setLoading(false); return; }
     setMember(mem);
 
-    // 패키지명
+    // 패키지 정보 (duration + title)
     if (mem.lesson_package_id) {
-      const { data: pkg } = await supabase.from('lesson_packages').select('title').eq('id', mem.lesson_package_id).maybeSingle();
-      if (pkg) setPackageTitle(pkg.title);
+      const { data: pkg } = await supabase.from('lesson_packages').select('title, duration_minutes').eq('id', mem.lesson_package_id).maybeSingle();
+      if (pkg) {
+        setPackageTitle(pkg.title);
+        if (pkg.duration_minutes) setPkgDuration(pkg.duration_minutes);
+      }
     }
 
     // 레슨 (3개월 전부터)
@@ -514,7 +518,7 @@ export default function ScheduleScreen() {
 
         {/* ── 레슨 가능 시간 탭 ── */}
         {tab === 'makeup' && (
-          <MakeupTab memberId={member?.id ?? null} coachId={member?.coach_id ?? null} lessonDuration={member?.fixed_lesson_duration ?? 60} />
+          <MakeupTab memberId={member?.id ?? null} coachId={member?.coach_id ?? null} lessonDuration={pkgDuration} />
         )}
 
         {/* ── 결제 탭 ── */}
