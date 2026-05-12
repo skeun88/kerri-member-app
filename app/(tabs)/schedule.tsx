@@ -443,14 +443,7 @@ export default function ScheduleScreen() {
                 <Text style={s.scheduleChipText}>{fixedScheduleText}</Text>
               </View>
             )}
-            <View style={s.progressBtnRow}>
-              <TouchableOpacity style={s.progressBtn}>
-                <Text style={s.progressBtnText}>보강 신청</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.progressBtn, s.progressBtnOutline]}>
-                <Text style={[s.progressBtnText, { color: Colors.navy }]}>일정 변경 요청</Text>
-              </TouchableOpacity>
-            </View>
+
           </View>
         )}
 
