@@ -171,7 +171,7 @@ export default function HomeScreen() {
         {[
           { icon: 'calendar', label: '내 일정', color: Colors.primary, onPress: () => router.push('/(tabs)/schedule') },
           { icon: 'person-circle', label: '내 정보', color: Colors.navy, onPress: () => router.push('/(tabs)/profile') },
-          { icon: 'chatbubble-ellipses', label: '코치 메시지', color: Colors.success, onPress: () => {} },
+          { icon: 'chatbubble-ellipses', label: '코치 메시지', color: Colors.success, onPress: () => router.push('/coach-chat') },
         ].map((item, i) => (
           <TouchableOpacity key={i} style={styles.quickCard} onPress={item.onPress}>
             <View style={[styles.quickIcon, { backgroundColor: item.color + '18' }]}>

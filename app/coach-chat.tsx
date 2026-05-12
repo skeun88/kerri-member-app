@@ -1,0 +1,163 @@
+import { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, FlatList, TextInput,
+  TouchableOpacity, KeyboardAvoidingView, Platform,
+  ActivityIndicator, SafeAreaView,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { supabase, getMyMemberRow } from '../lib/supabase';
+import { Colors, Radius, Shadow } from '../lib/theme';
+
+interface Msg {
+  id: string;
+  sender_type: 'coach' | 'member';
+  content: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+function fmt(dateStr: string) {
+  return new Date(dateStr).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+}
+
+export default function CoachChatScreen() {
+  const router = useRouter();
+  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [memberId, setMemberId] = useState<string | null>(null);
+  const [coachId, setCoachId] = useState<string | null>(null);
+  const listRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    (async () => {
+      const mem = await getMyMemberRow();
+      if (!mem) { setLoading(false); return; }
+      setMemberId(mem.id);
+      setCoachId(mem.coach_id);
+
+      const { data } = await supabase.from('messages').select('*')
+        .eq('member_id', mem.id).order('created_at', { ascending: true });
+      setMsgs(data ?? []);
+      setLoading(false);
+
+      // 코치 메시지 읽음 처리
+      await supabase.from('messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('member_id', mem.id).eq('sender_type', 'coach').is('read_at', null);
+
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 200);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!memberId) return;
+    const ch = supabase.channel(`chat_member_${memberId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages',
+        filter: `member_id=eq.${memberId}` }, (payload) => {
+        const newMsg = payload.new as Msg;
+        setMsgs(prev => [...prev, newMsg]);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+        if (newMsg.sender_type === 'coach') {
+          supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('id', newMsg.id).then(() => {});
+        }
+      }).subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [memberId]);
+
+  async function send() {
+    if (!input.trim() || !memberId || !coachId || sending) return;
+    const text = input.trim();
+    setInput('');
+    setSending(true);
+    await supabase.from('messages').insert({ coach_id: coachId, member_id: memberId, sender_type: 'member', content: text });
+    setSending(false);
+  }
+
+  function renderMsg({ item, index }: { item: Msg; index: number }) {
+    const isMe = item.sender_type === 'member';
+    const prev = index > 0 ? msgs[index - 1] : null;
+    const showDate = !prev || fmtDate(item.created_at) !== fmtDate(prev.created_at);
+    return (
+      <>
+        {showDate && (
+          <View style={s.dateDivider}><Text style={s.dateText}>{fmtDate(item.created_at)}</Text></View>
+        )}
+        <View style={[s.row, isMe ? s.rowMe : s.rowThem]}>
+          {!isMe && <View style={s.avatar}><Text style={s.avatarTxt}>코</Text></View>}
+          <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
+            <Text style={[s.txt, isMe && s.txtMe]}>{item.content}</Text>
+            <Text style={[s.time, isMe && s.timeMe]}>{fmt(item.created_at)}</Text>
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  return (
+    <SafeAreaView style={s.safe}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+          <Ionicons name="chevron-back" size={24} color={Colors.navy} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>코치 메시지</Text>
+        <View style={{ width: 40 }} />
+      </View>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+        {loading ? (
+          <View style={s.center}><ActivityIndicator color={Colors.primary} size="large" /></View>
+        ) : msgs.length === 0 ? (
+          <View style={s.center}>
+            <Ionicons name="chatbubbles-outline" size={48} color={Colors.iconMuted} />
+            <Text style={s.emptyTxt}>코치님과 첫 메시지를 보내보세요 🎾</Text>
+          </View>
+        ) : (
+          <FlatList ref={listRef} data={msgs} keyExtractor={i => i.id} renderItem={renderMsg}
+            contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })} />
+        )}
+        <View style={s.bar}>
+          <TextInput style={s.input} value={input} onChangeText={setInput}
+            placeholder="메시지 입력..." placeholderTextColor={Colors.placeholder}
+            multiline maxLength={500} />
+          <TouchableOpacity style={[s.sendBtn, (!input.trim() || sending) && s.sendBtnOff]}
+            onPress={send} disabled={!input.trim() || sending}>
+            {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={20} color="#fff" />}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: Colors.background },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: Colors.border },
+  backBtn: { width: 40, height: 40, justifyContent: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: Colors.navy },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  emptyTxt: { fontSize: 14, color: Colors.placeholder, textAlign: 'center' },
+  dateDivider: { alignItems: 'center', marginVertical: 12 },
+  dateText: { fontSize: 12, color: Colors.mutedFg, backgroundColor: Colors.border, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
+  row: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 8, gap: 8 },
+  rowMe: { flexDirection: 'row-reverse' },
+  rowThem: {},
+  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
+  avatarTxt: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  bubble: { maxWidth: '75%', borderRadius: 16, padding: 12 },
+  bubbleMe: { backgroundColor: Colors.primary, borderBottomRightRadius: 4 },
+  bubbleThem: { backgroundColor: '#fff', borderBottomLeftRadius: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  txt: { fontSize: 15, color: Colors.foreground, lineHeight: 22 },
+  txtMe: { color: '#fff' },
+  time: { fontSize: 10, color: Colors.mutedFg, marginTop: 4 },
+  timeMe: { color: 'rgba(255,255,255,0.65)' },
+  bar: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: Colors.border, gap: 8 },
+  input: { flex: 1, fontSize: 15, color: Colors.foreground, backgroundColor: Colors.background, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100 },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
+  sendBtnOff: { backgroundColor: Colors.iconMuted },
+});
