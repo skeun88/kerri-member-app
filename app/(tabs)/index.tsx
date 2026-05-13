@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +25,34 @@ export default function HomeScreen() {
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [coachName, setCoachName] = useState('코치');
+  const [inviteCode, setInviteCode] = useState('');
+  const [linkingCode, setLinkingCode] = useState(false);
+
+  async function handleLinkInviteCode() {
+    if (!inviteCode.trim()) return;
+    setLinkingCode(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLinkingCode(false); return; }
+
+    const { data: found } = await supabase
+      .from('members')
+      .select('*')
+      .eq('invite_code', inviteCode.trim().toUpperCase())
+      .maybeSingle();
+
+    if (!found) {
+      Alert.alert('코드 오류', '올바른 초대 코드를 입력해주세요.');
+      setLinkingCode(false);
+      return;
+    }
+
+    // auth_user_id 연결
+    await supabase.from('members').update({ auth_user_id: user.id }).eq('id', found.id);
+    setLinkingCode(false);
+    setInviteCode('');
+    await loadData();
+    Alert.alert('연결 완료! 🎾', `${found.name}님, 코치와 연결됐어요!`);
+  }
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -90,6 +118,35 @@ export default function HomeScreen() {
           </View>
         )}
       </View>
+
+      {/* 초대 코드 연결 (회원 미연결 상태) */}
+      {!member && (
+        <View style={styles.inviteBox}>
+          <Ionicons name="link-outline" size={32} color={Colors.primary} style={{ marginBottom: 10 }} />
+          <Text style={styles.inviteTitle}>코치가 보낸 초대 코드를 입력해주세요</Text>
+          <Text style={styles.inviteDesc}>코치에게 받은 6자리 초대 코드를 입력하면
+레슨 정보와 자동으로 연결됩니다</Text>
+          <TextInput
+            style={styles.inviteInput}
+            value={inviteCode}
+            onChangeText={v => setInviteCode(v.toUpperCase())}
+            placeholder="초대 코드 입력 (예: AB1C2D)"
+            placeholderTextColor={Colors.placeholder}
+            autoCapitalize="characters"
+            maxLength={6}
+          />
+          <TouchableOpacity
+            style={[styles.inviteBtn, (!inviteCode.trim() || linkingCode) && { opacity: 0.5 }]}
+            onPress={handleLinkInviteCode}
+            disabled={!inviteCode.trim() || linkingCode}
+          >
+            {linkingCode
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.inviteBtnText}>코치와 연결하기</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 잔여 크레딧 카드 */}
       {member && (
@@ -231,4 +288,26 @@ const styles = StyleSheet.create({
   quickCard: { flex: 1, backgroundColor: Colors.white, borderRadius: Radius.lg, padding: 16, alignItems: 'center', ...Shadow.sm },
   quickIcon: { width: 48, height: 48, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   quickLabel: { fontSize: 12, fontWeight: '700', color: Colors.navy, textAlign: 'center' },
+
+  inviteBox: {
+    margin: 16, backgroundColor: Colors.card, borderRadius: 16,
+    padding: 24, alignItems: 'center',
+    borderWidth: 1.5, borderColor: Colors.primaryLight,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+  },
+  inviteTitle: { fontSize: 16, fontWeight: '700', color: Colors.foreground, marginBottom: 8, textAlign: 'center' },
+  inviteDesc: { fontSize: 13, color: Colors.mutedFg, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  inviteInput: {
+    width: '100%', backgroundColor: Colors.mutedBg, borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 20, fontWeight: '800', color: Colors.navy,
+    textAlign: 'center', letterSpacing: 4,
+    borderWidth: 1.5, borderColor: Colors.border, marginBottom: 12,
+  },
+  inviteBtn: {
+    width: '100%', backgroundColor: Colors.primary, borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  inviteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
