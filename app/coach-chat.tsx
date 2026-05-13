@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
   TouchableOpacity, KeyboardAvoidingView, Platform,
   ActivityIndicator, SafeAreaView, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../lib/supabase';
 import { Colors, Radius, Shadow } from '../lib/theme';
@@ -34,34 +35,50 @@ export default function CoachChatScreen() {
   const [coachId, setCoachId] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
 
+  const memberIdRef = useRef<string | null>(null);
+
+  async function loadMsgs(mid: string, cid: string) {
+    const { data } = await supabase.from('messages').select('*')
+      .eq('member_id', mid).order('created_at', { ascending: true });
+    setMsgs(data ?? []);
+    setLoading(false);
+    // 읽음 처리
+    await supabase.from('messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('member_id', mid).eq('sender_type', 'coach').is('read_at', null);
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 200);
+  }
+
+  // 최초 마운트: 회원 정보 로드
   useEffect(() => {
     (async () => {
       const mem = await getMyMemberRow();
       if (!mem) { setLoading(false); return; }
       setMemberId(mem.id);
       setCoachId(mem.coach_id);
-
-      const { data } = await supabase.from('messages').select('*')
-        .eq('member_id', mem.id).order('created_at', { ascending: true });
-      setMsgs(data ?? []);
-      setLoading(false);
-
-      // 코치 메시지 읽음 처리
-      await supabase.from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('member_id', mem.id).eq('sender_type', 'coach').is('read_at', null);
-
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 200);
+      memberIdRef.current = mem.id;
+      await loadMsgs(mem.id, mem.coach_id);
     })();
   }, []);
 
+  // 포커스 시 메시지 리로드 (다른 탭에서 돌아올 때)
+  useFocusEffect(useCallback(() => {
+    if (memberIdRef.current && coachId) {
+      loadMsgs(memberIdRef.current, coachId);
+    }
+  }, [coachId]));
+
+  // Realtime 구독 (filter 없이 → 클라이언트에서 member_id 검증)
   useEffect(() => {
     if (!memberId) return;
-    const ch = supabase.channel(`chat_member_${memberId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages',
-        filter: `member_id=eq.${memberId}` }, (payload) => {
-        const newMsg = payload.new as Msg;
-        setMsgs(prev => [...prev, newMsg]);
+    const ch = supabase.channel('chat_member_rt_' + memberId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const newMsg = payload.new as any;
+        if (newMsg.member_id !== memberId) return;
+        setMsgs(prev => {
+          if (prev.find(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg as Msg];
+        });
         setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
         if (newMsg.sender_type === 'coach') {
           supabase.from('messages').update({ read_at: new Date().toISOString() }).eq('id', newMsg.id).then(() => {});
