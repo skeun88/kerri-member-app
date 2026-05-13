@@ -13,3 +13,49 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+/**
+ * 로그인한 유저에 해당하는 member row를 찾는 헬퍼.
+ * 우선순위:
+ *  1. members.auth_user_id = user.id  (UUID 직접 연결, 가장 정확)
+ *  2. members.id = user.id            (member row가 auth UUID와 동일한 케이스)
+ *  3. members.email = user.email      (이메일로 연결 — 최초 로그인 시 자동으로 auth_user_id 저장)
+ */
+export async function getMyMemberRow() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // 1순위: auth_user_id 직접 매칭
+  const { data: byAuthId } = await supabase
+    .from('members')
+    .select('*')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+  if (byAuthId) return byAuthId;
+
+  // 2순위: member.id = auth uid
+  const { data: byId } = await supabase
+    .from('members')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (byId) {
+    supabase.from('members').update({ auth_user_id: user.id }).eq('id', byId.id).then(() => {});
+    return byId;
+  }
+
+  // 3순위: 이메일 매칭 → auth_user_id 자동 저장
+  if (user.email) {
+    const { data: byEmail } = await supabase
+      .from('members')
+      .select('*')
+      .ilike('email', user.email)
+      .maybeSingle();
+    if (byEmail) {
+      supabase.from('members').update({ auth_user_id: user.id }).eq('id', byEmail.id).then(() => {});
+      return byEmail;
+    }
+  }
+
+  return null;
+}
