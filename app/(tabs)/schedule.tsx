@@ -44,7 +44,7 @@ function getDDay(dateStr: string) {
 
 
 interface LessonRequest {
-  id: string; requested_date: string; start_time: string; end_time: string; status: string; message?: string;
+  id: string; requested_date: string; start_time: string; end_time: string; status: string; message?: string; reject_message?: string | null;
 }
 
 function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|null; coachId: string|null; lessonDuration: number }) {
@@ -86,7 +86,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
   async function loadMyRequests() {
     if (!memberId) return;
-    const { data } = await supabase.from('lesson_requests').select('*')
+    const { data } = await supabase.from('lesson_requests').select('*, reject_message')
       .eq('member_id', memberId).order('created_at', { ascending: false });
     setMyRequests(data ?? []);
   }
@@ -201,6 +201,11 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                   req.status === 'pending' ? '⏳ 코치 확인 중' :
                   req.status === 'accepted' ? '✅ 수락됨' : '❌ 거절됨'
                 }</Text>
+                {req.status === 'rejected' && req.reject_message ? (
+                  <Text style={{ fontSize: 12, color: Colors.destructive, marginTop: 4, lineHeight: 16 }}>
+                    💬 {req.reject_message}
+                  </Text>
+                ) : null}
               </View>
               <View style={[s.todayBadge, {
                 backgroundColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.success : Colors.destructive
