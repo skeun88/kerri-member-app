@@ -22,6 +22,11 @@ export default function TabsLayout() {
         tabBarIcon: ({ color, size }) => <Ionicons name="calendar" size={size} color={color} />,
         headerTitle: '내 레슨 일정',
       }} />
+      <Tabs.Screen name="payment" options={{
+        title: '결제', tabBarLabel: '결제',
+        tabBarIcon: ({ color, size }) => <Ionicons name="card" size={size} color={color} />,
+        headerTitle: '결제',
+      }} />
       <Tabs.Screen name="profile" options={{
         title: '내 정보', tabBarLabel: '내 정보',
         tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" size={size} color={color} />,
