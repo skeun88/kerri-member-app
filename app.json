@@ -36,14 +36,7 @@
     "scheme": "kerri-member",
     "plugins": [
       "expo-router",
-      "expo-secure-store",
-      [
-        "react-native-branch",
-        {
-          "apiKey": "BRANCH_LIVE_KEY_HERE",
-          "iosAppDomain": "BRANCH_APP_LINK_DOMAIN_HERE"
-        }
-      ]
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},
