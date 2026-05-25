@@ -40,8 +40,8 @@ export async function getMyMemberRow() {
     .eq('id', user.id)
     .maybeSingle();
   if (byId) {
-    supabase.from('members').update({ auth_user_id: user.id }).eq('id', byId.id).then(() => {});
-    return byId;
+    await supabase.from('members').update({ auth_user_id: user.id }).eq('id', byId.id);
+    return { ...byId, auth_user_id: user.id };
   }
 
   // 3순위: 이메일 매칭 → auth_user_id 자동 저장
@@ -52,8 +52,8 @@ export async function getMyMemberRow() {
       .ilike('email', user.email)
       .maybeSingle();
     if (byEmail) {
-      supabase.from('members').update({ auth_user_id: user.id }).eq('id', byEmail.id).then(() => {});
-      return byEmail;
+      await supabase.from('members').update({ auth_user_id: user.id }).eq('id', byEmail.id);
+      return { ...byEmail, auth_user_id: user.id };
     }
   }
 
