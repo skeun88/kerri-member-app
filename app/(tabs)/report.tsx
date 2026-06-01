@@ -7,6 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors } from '../../lib/theme';
+import { getMyCoachSubscription, coachCanProvide, CoachSubscriptionInfo } from '../../lib/coachSubscription';
 
 interface PracticeItem {
   title: string;
@@ -34,7 +35,19 @@ function formatDate(dateStr: string) {
 }
 
 export default function ReportScreen() {
-  const [reports, setReports] = useState<MemberReport[]>([]);
+  const [coachSub, setCoachSub] = useState<CoachSubscriptionInfo | null>(null);
+  const [subLoading, setSubLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      getMyCoachSubscription().then((sub) => {
+        setCoachSub(sub);
+        setSubLoading(false);
+      });
+    }, [])
+  );
+
+    const [reports, setReports] = useState<MemberReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -84,7 +97,21 @@ export default function ReportScreen() {
   useFocusEffect(useCallback(() => { loadReports(); }, []));
 
   if (loading) {
+    if (!subLoading && !coachCanProvide(coachSub, 'reports')) {
     return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, backgroundColor: '#f8f9fa' }}>
+        <Ionicons name="document-lock-outline" size={64} color="#ccc" style={{ marginBottom: 20 }} />
+        <Text style={{ fontSize: 20, fontWeight: '700', color: '#333', marginBottom: 12, textAlign: 'center' }}>
+          리포트를 확인하려면
+        </Text>
+        <Text style={{ fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 22 }}>
+          코치가 Pro 플랜을 사용할 때{`\n`}레슨 리포트를 받아볼 수 있어요.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={Colors.navy} />
       </View>
