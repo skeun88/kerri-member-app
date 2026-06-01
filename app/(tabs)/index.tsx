@@ -14,6 +14,13 @@ interface UpcomingLesson {
   id: string; date: string; start_time: string; end_time: string; title: string;
 }
 
+interface CoachMessage {
+  id: string;
+  content: string;
+  created_at: string;
+  read_at: string | null;
+}
+
 interface PaymentAlert {
   id: string; amount: number; paid_amount: number; due_date: string; status: string;
 }
@@ -25,6 +32,7 @@ export default function HomeScreen() {
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [coachName, setCoachName] = useState('코치');
+  const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
   const [inviteCode, setInviteCode] = useState('');
   const [linkingCode, setLinkingCode] = useState(false);
 
@@ -78,6 +86,16 @@ export default function HomeScreen() {
           .in('id', lessonIds).gte('date', today).order('date').order('start_time').limit(3);
         setUpcomingLessons(lessons ?? []);
       }
+
+      // 코치 메시지 최근 3개
+      const { data: msgs } = await supabase
+        .from('messages')
+        .select('id, content, created_at, read_at')
+        .eq('member_id', myMember.id)
+        .eq('sender_type', 'coach')
+        .order('created_at', { ascending: false })
+        .limit(3);
+      setCoachMessages(msgs ?? []);
 
       // 미납 결제 (가장 가까운 due_date 기준)
       const { data: payments } = await supabase.from('payments').select('*')
@@ -222,22 +240,53 @@ export default function HomeScreen() {
         })
       )}
 
-      {/* 퀵 메뉴 그리드 */}
-      <Text style={styles.sectionTitle2}>바로가기</Text>
-      <View style={styles.quickGrid}>
-        {[
-          { icon: 'calendar', label: '내 일정', color: Colors.primary, onPress: () => router.push('/(tabs)/schedule') },
-          { icon: 'person-circle', label: '내 정보', color: Colors.navy, onPress: () => router.push('/(tabs)/profile') },
-          { icon: 'chatbubble-ellipses', label: '코치 메시지', color: Colors.success, onPress: () => router.push('/coach-chat') },
-        ].map((item, i) => (
-          <TouchableOpacity key={i} style={styles.quickCard} onPress={item.onPress}>
-            <View style={[styles.quickIcon, { backgroundColor: item.color + '18' }]}>
-              <Ionicons name={item.icon as any} size={26} color={item.color} />
+      {/* 코치 메시지 */}
+      {member && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>코치 메시지</Text>
+            <TouchableOpacity onPress={() => router.push('/coach-chat')}>
+              <Text style={styles.seeAll}>전체보기</Text>
+            </TouchableOpacity>
+          </View>
+          {coachMessages.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="chatbubble-outline" size={36} color={Colors.iconMuted} />
+              <Text style={styles.emptyText}>코치 메시지가 없어요</Text>
             </View>
-            <Text style={styles.quickLabel}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          ) : (
+            coachMessages.map(msg => {
+              const isUnread = !msg.read_at;
+              const date = new Date(msg.created_at);
+              const dateStr = date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+              const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+              return (
+                <TouchableOpacity
+                  key={msg.id}
+                  style={[styles.msgCard, isUnread && styles.msgCardUnread]}
+                  onPress={() => router.push('/coach-chat')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.msgLeft}>
+                    <View style={styles.msgAvatar}>
+                      <Ionicons name="person" size={16} color={Colors.primary} />
+                    </View>
+                    <View style={styles.msgBody}>
+                      <Text style={styles.msgCoach}>{coachName} 코치</Text>
+                      <Text style={styles.msgContent} numberOfLines={2}>{msg.content}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.msgRight}>
+                    <Text style={styles.msgDate}>{dateStr}</Text>
+                    <Text style={styles.msgTime}>{timeStr}</Text>
+                    {isUnread && <View style={styles.unreadDot} />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </>
+      )}
 
       <View style={{ height: 80 }} />
     </ScrollView>
@@ -269,7 +318,6 @@ const styles = StyleSheet.create({
   ddayText: { fontSize: 12, fontWeight: '800', color: Colors.white },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.navy },
-  sectionTitle2: { fontSize: 16, fontWeight: '800', color: Colors.navy, marginHorizontal: 16, marginTop: 16, marginBottom: 10 },
   seeAll: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
   emptyCard: { alignItems: 'center', backgroundColor: Colors.white, borderRadius: Radius.lg, marginHorizontal: 16, padding: 32, ...Shadow.sm },
   emptyText: { fontSize: 14, color: Colors.placeholder, marginTop: 8 },
@@ -284,10 +332,17 @@ const styles = StyleSheet.create({
   lessonTime: { fontSize: 13, color: Colors.mutedFg, marginTop: 2 },
   todayBadge: { marginTop: 4, alignSelf: 'flex-start', backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
   todayBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.white },
-  quickGrid: { flexDirection: 'row', marginHorizontal: 16, gap: 10, marginBottom: 8 },
-  quickCard: { flex: 1, backgroundColor: Colors.white, borderRadius: Radius.lg, padding: 16, alignItems: 'center', ...Shadow.sm },
-  quickIcon: { width: 48, height: 48, borderRadius: Radius.md, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  quickLabel: { fontSize: 12, fontWeight: '700', color: Colors.navy, textAlign: 'center' },
+  msgCard: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', backgroundColor: Colors.white, borderRadius: Radius.lg, marginHorizontal: 16, marginBottom: 8, padding: 14, ...Shadow.sm },
+  msgCardUnread: { borderLeftWidth: 3, borderLeftColor: Colors.primary },
+  msgLeft: { flexDirection: 'row', flex: 1, gap: 10 },
+  msgAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primary + '18', justifyContent: 'center', alignItems: 'center' },
+  msgBody: { flex: 1 },
+  msgCoach: { fontSize: 12, fontWeight: '700', color: Colors.primary, marginBottom: 3 },
+  msgContent: { fontSize: 14, color: Colors.navy, lineHeight: 20 },
+  msgRight: { alignItems: 'flex-end', gap: 2, marginLeft: 8 },
+  msgDate: { fontSize: 11, color: Colors.mutedFg },
+  msgTime: { fontSize: 11, color: Colors.mutedFg },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary, marginTop: 2 },
 
   inviteBox: {
     margin: 16, backgroundColor: Colors.card, borderRadius: 16,
