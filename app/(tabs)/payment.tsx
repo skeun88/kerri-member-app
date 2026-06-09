@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Modal, Alert, ActivityIndicator,
@@ -149,6 +149,15 @@ export default function PaymentScreen() {
   }
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
+
+  // ── Realtime: 코치가 결제 추가/수정 시 즉시 반영 ───────────────────
+  useEffect(() => {
+    if (!memberId) return;
+    const ch = supabase.channel('payment_rt_' + memberId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `member_id=eq.${memberId}` }, () => loadData())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [memberId]);
 
   function openPayment(params: { orderId: string; orderName: string; amount: number; targetPaymentId?: string; targetPackageId?: string }) {
     setPaymentParams(params);

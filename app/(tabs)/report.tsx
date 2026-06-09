@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator,
@@ -52,10 +52,12 @@ export default function ReportScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [memberIdForRt, setMemberIdForRt] = useState<string | null>(null);
 
   async function loadReports() {
     const member = await getMyMemberRow();
     if (!member) { setLoading(false); return; }
+    setMemberIdForRt(member.id);
 
     const { data } = await supabase
       .from('member_lesson_reports')
@@ -95,6 +97,16 @@ export default function ReportScreen() {
   }
 
   useFocusEffect(useCallback(() => { loadReports(); }, []));
+
+  // ── Realtime: 코치가 AI 리포트 작성 시 즉시 반영 ────────────────
+  useEffect(() => {
+    if (!memberIdForRt) return;
+    const ch = supabase.channel('report_rt_' + memberIdForRt)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'member_lesson_reports', filter: `member_id=eq.${memberIdForRt}` }, () => loadReports())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'member_lesson_reports', filter: `member_id=eq.${memberIdForRt}` }, () => loadReports())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [memberIdForRt]);
 
   if (loading) {
     if (!subLoading && !coachCanProvide(coachSub, 'reports')) {

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -106,6 +106,25 @@ export default function HomeScreen() {
   }
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
+
+  // ── Realtime: 코치가 레슨/메시지/결제 변경 시 홈화면 즉시 갱신 ────
+  useEffect(() => {
+    if (!member?.id) return;
+    const ch = supabase.channel('home_rt_' + member.id)
+      // 레슨 할당/해제
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lesson_members', filter: `member_id=eq.${member.id}` }, () => loadData())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lesson_members', filter: `member_id=eq.${member.id}` }, () => loadData())
+      // 레슨 시간/정보 변경
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
+      // 코치 메시지
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `member_id=eq.${member.id}` }, () => loadData())
+      // 결제 상태
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `member_id=eq.${member.id}` }, () => loadData())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [member?.id]);
 
   function getDDay(dueDateStr: string) {
     const today = new Date(); today.setHours(0,0,0,0);
