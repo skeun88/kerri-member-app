@@ -68,6 +68,29 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     loadMyRequests();
   }, [coachId, calMonth.year, calMonth.month]);
 
+  // lesson_requests 상태업데이트 Realtime 구독 (수낙/거절 즉시 반영)
+  useEffect(() => {
+    if (!memberId) return;
+    const ch = supabase.channel('makeup_requests_' + memberId)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'lesson_requests',
+        filter: `member_id=eq.${memberId}`,
+      }, () => {
+        loadMyRequests();
+        loadBusy();
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'lessons',
+        filter: `coach_id=eq.${coachId}`,
+      }, () => loadBusy())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [memberId, coachId]);
+
   async function loadBusy() {
     if (!coachId) return;
     setLoadingSlots(true);
@@ -402,6 +425,56 @@ export default function ScheduleScreen() {
   }
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
+
+  // ── Realtime 구독: 코치가 레슨 생성/수정/삭제하면 즉시 반영 ──────────
+  useEffect(() => {
+    let ch: ReturnType<typeof supabase.channel> | null = null;
+
+    (async () => {
+      const mem = await getMyMemberRow();
+      if (!mem) return;
+
+      ch = supabase.channel('member_lesson_sync_' + mem.id)
+        // 1) lesson_members INSERT/DELETE → 내 레슨 목록 변경
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'lesson_members',
+          filter: `member_id=eq.${mem.id}`,
+        }, () => loadData())
+        .on('postgres_changes', {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'lesson_members',
+          filter: `member_id=eq.${mem.id}`,
+        }, () => loadData())
+        // 2) lessons UPDATE/DELETE (코치 소유) → 시간·정보 변경
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'lessons',
+          filter: `coach_id=eq.${mem.coach_id}`,
+        }, () => loadData())
+        .on('postgres_changes', {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'lessons',
+          filter: `coach_id=eq.${mem.coach_id}`,
+        }, () => loadData())
+        // 3) lesson_requests 상태 변경 → MakeupTab 즉시 반영
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'lesson_requests',
+          filter: `member_id=eq.${mem.id}`,
+        }, () => loadData())
+        .subscribe();
+    })();
+
+    return () => {
+      if (ch) supabase.removeChannel(ch);
+    };
+  }, []);
 
   const lessonDateSet = new Set(lessons.map(l => l.date));
   const dayLessons = lessons.filter(l => l.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time));
