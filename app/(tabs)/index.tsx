@@ -5,12 +5,20 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import { Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import QRCode from 'react-native-qrcode-svg';
+import * as Sharing from 'expo-sharing';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 interface MemberInfo {
-  id: string; name: string; level: string; remaining_credits: number; coach_id: string;
+  id: string; name: string; level: string;
+  remaining_credits: number; total_credits: number;
+  coach_id: string;
+  fixed_schedule_days?: number[];
+  fixed_schedule_times?: Record<string, string[]>;
+  fixed_schedule_time?: string;
 }
 
 interface CoachProfile {
@@ -42,6 +50,7 @@ export default function HomeScreen() {
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkingCode, setLinkingCode] = useState(false);
 
@@ -66,7 +75,7 @@ export default function HomeScreen() {
   async function loadData() {
     const myMember = await getMyMemberRow();
     if (!myMember) return;
-    setMember(myMember);
+    setMember(myMember as MemberInfo);
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -224,6 +233,19 @@ export default function HomeScreen() {
                 <Text style={styles.myCoachBadgeText}>담당 코치</Text>
               </View>
             </View>
+
+            {/* QR 코드 (80×80) */}
+            {member?.coach_id && (
+              <TouchableOpacity onPress={() => setQrModalVisible(true)} style={styles.qrSmall} activeOpacity={0.8}>
+                <QRCode
+                  value={`kerri://join?coach_id=${member.coach_id}`}
+                  size={68}
+                  color="#1B2E4B"
+                  backgroundColor="#fff"
+                />
+                <Text style={styles.qrSmallLabel}>탭하면 확대</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* 전문 분야 태그 */}
@@ -274,6 +296,101 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
+
+      {/* QR 전체화면 모달 */}
+      {member?.coach_id && (
+        <Modal visible={qrModalVisible} transparent animationType="fade" onRequestClose={() => setQrModalVisible(false)}>
+          <TouchableOpacity style={styles.qrModalOverlay} activeOpacity={1} onPress={() => setQrModalVisible(false)}>
+            <TouchableOpacity activeOpacity={1} style={styles.qrModalCard} onPress={e => e.stopPropagation()}>
+              <Text style={styles.qrModalTitle}>코치 초대 QR</Text>
+              <Text style={styles.qrModalSub}>지인에게 이 QR을 공유해서{`\n`}코치를 소개해보세요!</Text>
+              <View style={styles.qrModalBox}>
+                <QRCode
+                  value={`kerri://join?coach_id=${member.coach_id}`}
+                  size={200}
+                  color="#1B2E4B"
+                  backgroundColor="#fff"
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.qrShareBtn}
+                onPress={async () => {
+                  const available = await Sharing.isAvailableAsync();
+                  if (!available) { setQrModalVisible(false); return; }
+                  await Sharing.shareAsync(`kerri://join?coach_id=${member.coach_id}`);
+                }}
+              >
+                <Ionicons name="share-outline" size={18} color="#fff" />
+                <Text style={styles.qrShareBtnText}>공유하기</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setQrModalVisible(false)} style={{ marginTop: 12 }}>
+                <Text style={{ fontSize: 14, color: Colors.mutedFg }}>닫기</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* ── 레슨 진행률 카드 ────────────────────────────────── */}
+      {member && (() => {
+        const total = member.total_credits ?? 0;
+        const remaining = member.remaining_credits ?? 0;
+        const done = Math.max(0, total - remaining);
+        const pct = total > 0 ? Math.min(1, done / total) : 0;
+        const DAYS_KR = ['일','월','화','수','목','금','토'];
+        // 고정 스케줄 파싱
+        const scheduleDays: number[] = (member as any).fixed_schedule_days ?? [];
+        const fst = (member as any).fixed_schedule_times;
+        const legacyTime = (member as any).fixed_schedule_time?.slice(0,5);
+        const fixedSchedule: { day: string; time: string }[] = scheduleDays.map(d => {
+          const raw = fst?.[String(d)];
+          const times: string[] = Array.isArray(raw) ? raw : (raw ? [String(raw)] : (legacyTime ? [legacyTime] : []));
+          return { day: DAYS_KR[d], time: times[0] ?? '' };
+        }).filter(s => s.time);
+        return (
+          <View style={styles.progressCard}>
+            {/* 헤더 */}
+            <View style={styles.progressHeader}>
+              <View>
+                <Text style={styles.progressTitle}>레슨 진행률</Text>
+                {(member as any).lesson_package_title && (
+                  <Text style={styles.progressSub}>{(member as any).lesson_package_title}</Text>
+                )}
+              </View>
+              <Text style={styles.progressCount}>
+                <Text style={styles.progressDone}>{done}</Text>/{total}회
+              </Text>
+            </View>
+            {/* 프로그레스 바 */}
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${Math.round(pct * 100)}%` as any }]} />
+            </View>
+            <Text style={styles.progressPct}>{Math.round(pct * 100)}% 완료 · 잔여 {remaining}회</Text>
+            {/* 고정 스케줄 */}
+            {fixedSchedule.length > 0 && (
+              <View style={styles.scheduleBox}>
+                <View style={styles.scheduleBoxHeader}>
+                  <Ionicons name="time-outline" size={13} color={Colors.mutedFg} />
+                  <Text style={styles.scheduleBoxLabel}>고정 레슨 스케줄</Text>
+                </View>
+                <View style={styles.scheduleChips}>
+                  {fixedSchedule.map((s, i) => (
+                    <View key={i} style={styles.scheduleChip}>
+                      <Text style={styles.scheduleChipText}>{s.day}요일 {s.time}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            {/* 완료 안내 */}
+            {total > 0 && remaining === 0 && (
+              <View style={styles.allDoneBox}>
+                <Text style={styles.allDoneText}>🎉 이번 회차 레슨을 모두 완료했어요!</Text>
+              </View>
+            )}
+          </View>
+        );
+      })()}
 
       {/* 결제 알림 배너 */}
       {paymentAlert && (() => {
@@ -392,6 +509,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
   },
   myCoachBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  qrSmall: { alignItems: 'center', padding: 4, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: Colors.border },
+  qrSmallLabel: { fontSize: 9, color: Colors.mutedFg, marginTop: 2 },
+  qrModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  qrModalCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', width: 300 },
+  qrModalTitle: { fontSize: 18, fontWeight: '800', color: Colors.navy, marginBottom: 6 },
+  qrModalSub: { fontSize: 13, color: Colors.mutedFg, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  qrModalBox: { padding: 16, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: Colors.border, marginBottom: 20 },
+  qrShareBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  qrShareBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
   tag: {
@@ -445,6 +571,28 @@ const styles = StyleSheet.create({
   paymentBannerSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 1 },
   ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 4 },
   ddayText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+
+  // ── 레슨 진행률 카드 ────────────────────────────────────
+  progressCard: {
+    backgroundColor: '#fff', borderRadius: Radius.xl,
+    marginHorizontal: 16, marginBottom: 8, padding: 16, ...Shadow.sm,
+  },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy },
+  progressSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
+  progressCount: { fontSize: 13, color: Colors.mutedFg },
+  progressDone: { fontSize: 15, fontWeight: '800', color: Colors.primary },
+  progressBarBg: { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 6 },
+  progressBarFill: { height: 8, backgroundColor: Colors.primary, borderRadius: 4 },
+  progressPct: { fontSize: 12, color: Colors.mutedFg, marginBottom: 10 },
+  scheduleBox: { backgroundColor: Colors.mutedBg, borderRadius: Radius.md, padding: 10 },
+  scheduleBoxHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
+  scheduleBoxLabel: { fontSize: 12, fontWeight: '600', color: Colors.mutedFg },
+  scheduleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  scheduleChip: { backgroundColor: '#fff', borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: Colors.border },
+  scheduleChipText: { fontSize: 12, color: Colors.navy, fontWeight: '600' },
+  allDoneBox: { marginTop: 10, backgroundColor: Colors.primary + '12', borderRadius: Radius.md, padding: 10, alignItems: 'center' },
+  allDoneText: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
 
   // ── 다가오는 레슨 ─────────────────────────────────────────
   sectionHeader: {
