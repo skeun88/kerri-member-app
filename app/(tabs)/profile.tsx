@@ -13,9 +13,8 @@ interface MemberProfile {
   remaining_credits: number; is_active: boolean;
 }
 
-interface XpMission { id: number; label: string; xp: number; done: boolean; }
-const LEVEL_XP: Record<string, number> = { '입문': 100, '초급': 250, '중급': 500, '고급': 800, '선수': 1000 };
-const LEVEL_ORDER = ['입문','초급','중급','고급','선수'];
+const LEVEL_XP: Record<string, number> = { '입문': 100, '초급': 250, '중급': 500, '상급': 800, '선수': 1000 };
+const LEVEL_ORDER = ['입문','초급','중급','상급','선수'];
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<MemberProfile | null>(null);
@@ -24,11 +23,7 @@ export default function ProfileScreen() {
   const [totalLessons, setTotalLessons] = useState(0);
   const [attendedLessons, setAttendedLessons] = useState(0);
   const [attendanceDots, setAttendanceDots] = useState<boolean[]>([]);
-  const [missions, setMissions] = useState<XpMission[]>([
-    { id: 1, label: '레슨 출석하기', xp: 10, done: false },
-    { id: 2, label: '리포트 확인하기', xp: 15, done: false },
-    { id: 3, label: '성장 기록 공유하기', xp: 20, done: false },
-  ]);
+
   const [xp, setXp] = useState(0);
   const [editModal, setEditModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -65,12 +60,6 @@ export default function ProfileScreen() {
   }
 
   useFocusEffect(useCallback(() => { loadProfile(); }, []));
-
-  function completeMission(id: number) {
-    setMissions(prev => prev.map(m => m.id === id && !m.done ? { ...m, done: true } : m));
-    const mission = missions.find(m => m.id === id);
-    if (mission && !mission.done) setXp(prev => prev + mission.xp);
-  }
 
   async function handleSaveName() {
     if (!profile) return;
@@ -166,49 +155,6 @@ export default function ProfileScreen() {
             <View style={styles.statCard}>
               <Text style={styles.statNum}>{profile?.remaining_credits ?? 0}</Text>
               <Text style={styles.statLabel}>잔여 레슨</Text>
-            </View>
-          </View>
-
-          {/* 미션 */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>오늘의 미션</Text>
-            <View style={styles.card}>
-              {missions.map((m, i) => (
-                <TouchableOpacity key={m.id} style={[styles.missionRow, i < missions.length - 1 && styles.missionBorder]}
-                  onPress={() => completeMission(m.id)} disabled={m.done}>
-                  <View style={[styles.missionCheck, m.done && styles.missionCheckDone]}>
-                    {m.done && <Ionicons name="checkmark" size={14} color={Colors.white} />}
-                  </View>
-                  <Text style={[styles.missionLabel, m.done && { color: Colors.placeholder, textDecorationLine: 'line-through' }]}>
-                    {m.label}
-                  </Text>
-                  <View style={[styles.xpTag, m.done && { backgroundColor: Colors.mutedBg }]}>
-                    <Text style={[styles.xpTagText, m.done && { color: Colors.placeholder }]}>+{m.xp}xp</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* 성장 기록 */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>성장 기록</Text>
-            <View style={styles.growthCard}>
-              <View style={styles.growthRow}>
-                <Ionicons name="trending-up" size={18} color={Colors.primary} />
-                <Text style={styles.growthLabel}>레벨</Text>
-                <Text style={styles.growthValue}>{level}</Text>
-              </View>
-              <View style={[styles.growthRow, styles.growthBorder]}>
-                <Ionicons name="flame" size={18} color={Colors.warning} />
-                <Text style={styles.growthLabel}>연속 출석</Text>
-                <Text style={styles.growthValue}>{attendanceDots.filter(Boolean).length}회</Text>
-              </View>
-              <View style={styles.growthRow}>
-                <Ionicons name="star" size={18} color={Colors.warning} />
-                <Text style={styles.growthLabel}>누적 XP</Text>
-                <Text style={styles.growthValue}>{xp} XP</Text>
-              </View>
             </View>
           </View>
 
