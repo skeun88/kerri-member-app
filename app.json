@@ -16,16 +16,8 @@
       "bundleIdentifier": "com.kerri.member",
       "supportsTablet": false,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "branch_key": {
-          "live": "BRANCH_LIVE_KEY_HERE"
-        },
-        "branch_app_domain": "BRANCH_APP_LINK_DOMAIN_HERE"
-      },
-      "associatedDomains": [
-        "applinks:BRANCH_APP_LINK_DOMAIN_HERE",
-        "applinks:BRANCH_ALT_LINK_DOMAIN_HERE"
-      ]
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.kerri.member"
@@ -36,7 +28,9 @@
     "scheme": "kerri-member",
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset"
     ],
     "extra": {
       "router": {},
