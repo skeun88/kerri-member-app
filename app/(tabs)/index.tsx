@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center',
   },
   levelEmoji: { fontSize: 16 },
-  levelText: { fontSize: 11, fontWeight: '700', color: '#fff', marginTop: 2 },
+  levelText: { fontSize: 13, fontWeight: '700', color: '#fff', marginTop: 2 },
 
   // ── 담당 코치 카드 ──────────────────────────────────────────
   coachCard: {
@@ -500,15 +500,15 @@ const styles = StyleSheet.create({
   },
   coachNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
   coachName: { fontSize: 17, fontWeight: '800', color: Colors.navy },
-  coachExp: { fontSize: 12, color: Colors.mutedFg },
+  coachExp: { fontSize: 14, color: Colors.mutedFg },
   coachLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-  coachLoc: { fontSize: 12, color: Colors.mutedFg },
+  coachLoc: { fontSize: 14, color: Colors.mutedFg },
   myCoachBadge: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.primary + '18', borderRadius: Radius.full,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  myCoachBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+  myCoachBadgeText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   qrSmall: { alignItems: 'center', padding: 4, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: Colors.border },
   qrSmallLabel: { fontSize: 9, color: Colors.mutedFg, marginTop: 2 },
   qrModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
@@ -524,12 +524,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
   },
-  tagText: { fontSize: 12, color: Colors.mutedFg },
+  tagText: { fontSize: 14, color: Colors.mutedFg },
 
   coachBio: { fontSize: 13, color: Colors.mutedFg, lineHeight: 20, marginBottom: 8 },
 
   careerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
-  careerText: { fontSize: 12, color: Colors.navy, lineHeight: 18, flex: 1 },
+  careerText: { fontSize: 14, color: Colors.navy, lineHeight: 18, flex: 1 },
 
   coachActions: {
     flexDirection: 'row', gap: 8,
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     borderWidth: 2, borderColor: '#fff',
   },
-  msgBadgeText: { fontSize: 10, fontWeight: '800', color: '#fff' },
+  msgBadgeText: { fontSize: 12, fontWeight: '800', color: '#fff' },
   scheduleBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 10, borderRadius: Radius.md,
@@ -568,9 +568,9 @@ const styles = StyleSheet.create({
   paymentBannerUrgent: { borderColor: Colors.destructive, backgroundColor: '#fff5f5' },
   paymentBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   paymentBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.navy },
-  paymentBannerSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 1 },
+  paymentBannerSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 1 },
   ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 4 },
-  ddayText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  ddayText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 
   // ── 레슨 진행률 카드 ────────────────────────────────────
   progressCard: {
@@ -579,18 +579,18 @@ const styles = StyleSheet.create({
   },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy },
-  progressSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
+  progressSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
   progressCount: { fontSize: 13, color: Colors.mutedFg },
   progressDone: { fontSize: 15, fontWeight: '800', color: Colors.primary },
   progressBarBg: { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 6 },
   progressBarFill: { height: 8, backgroundColor: Colors.primary, borderRadius: 4 },
-  progressPct: { fontSize: 12, color: Colors.mutedFg, marginBottom: 10 },
+  progressPct: { fontSize: 14, color: Colors.mutedFg, marginBottom: 10 },
   scheduleBox: { backgroundColor: Colors.mutedBg, borderRadius: Radius.md, padding: 10 },
   scheduleBoxHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
-  scheduleBoxLabel: { fontSize: 12, fontWeight: '600', color: Colors.mutedFg },
+  scheduleBoxLabel: { fontSize: 14, fontWeight: '600', color: Colors.mutedFg },
   scheduleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   scheduleChip: { backgroundColor: '#fff', borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: Colors.border },
-  scheduleChipText: { fontSize: 12, color: Colors.navy, fontWeight: '600' },
+  scheduleChipText: { fontSize: 14, color: Colors.navy, fontWeight: '600' },
   allDoneBox: { marginTop: 10, backgroundColor: Colors.primary + '12', borderRadius: Radius.md, padding: 10, alignItems: 'center' },
   allDoneText: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
 
@@ -613,9 +613,9 @@ const styles = StyleSheet.create({
   },
   lessonCardToday: { backgroundColor: Colors.primary + '10', borderWidth: 1.5, borderColor: Colors.primary },
   lessonDateBox: { alignItems: 'center', minWidth: 44, marginRight: 14 },
-  lessonMon: { fontSize: 10, color: Colors.mutedFg, fontWeight: '600' },
+  lessonMon: { fontSize: 12, color: Colors.mutedFg, fontWeight: '600' },
   lessonDay: { fontSize: 22, fontWeight: '900', color: Colors.navy },
-  lessonDow: { fontSize: 11, color: Colors.mutedFg, fontWeight: '600' },
+  lessonDow: { fontSize: 13, color: Colors.mutedFg, fontWeight: '600' },
   lessonInfo: { flex: 1 },
   lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.navy },
   lessonTime: { fontSize: 13, color: Colors.mutedFg, marginTop: 2 },
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
     marginTop: 4, alignSelf: 'flex-start',
     backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2,
   },
-  todayBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  todayBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
   // ── 초대 코드 ─────────────────────────────────────────────
   inviteBox: {

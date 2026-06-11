@@ -202,7 +202,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                   style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.success + '18', borderWidth: 1, borderColor: Colors.success }}
                   onPress={() => { setBookingSlot(slot); setBookingModal(true); }}>
                   <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.success }}>{slot}</Text>
-                  <Text style={{ fontSize: 10, color: Colors.success + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
+                  <Text style={{ fontSize: 12, color: Colors.success + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -225,7 +225,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                   req.status === 'accepted' ? '✅ 수락됨' : '❌ 거절됨'
                 }</Text>
                 {req.status === 'rejected' && req.reject_message ? (
-                  <Text style={{ fontSize: 12, color: Colors.destructive, marginTop: 4, lineHeight: 16 }}>
+                  <Text style={{ fontSize: 14, color: Colors.destructive, marginTop: 4, lineHeight: 16 }}>
                     💬 {req.reject_message}
                   </Text>
                 ) : null}
@@ -344,7 +344,7 @@ const cal = StyleSheet.create({
   navBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
   title: { fontSize: 16, fontWeight: '800', color: Colors.navy },
   dayRow: { flexDirection: 'row', marginBottom: 4 },
-  dayLabel: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700', color: Colors.mutedFg, paddingVertical: 4 },
+  dayLabel: { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: Colors.mutedFg, paddingVertical: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '14.28%', alignItems: 'center', paddingVertical: 3 },
   dayCircle: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
@@ -783,7 +783,7 @@ const s = StyleSheet.create({
   tabRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 6, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: Colors.border },
   tabBtn: { flex: 1, paddingVertical: 8, borderRadius: Radius.md, alignItems: 'center', backgroundColor: Colors.mutedBg, flexDirection:'row', justifyContent:'center', gap:4 },
   tabBtnActive: { backgroundColor: Colors.primary },
-  tabText: { fontSize: 12, fontWeight: '700', color: Colors.mutedFg },
+  tabText: { fontSize: 14, fontWeight: '700', color: Colors.mutedFg },
   tabTextActive: { color: '#fff' },
   tabBadge: { backgroundColor: Colors.destructive, borderRadius: 8, width: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
   tabBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
@@ -791,7 +791,7 @@ const s = StyleSheet.create({
   progressCard: { backgroundColor: '#fff', borderRadius: Radius.xl, margin: 16, marginBottom: 0, padding: 16, ...Shadow.sm },
   progressTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy },
-  progressSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
+  progressSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
   progressCount: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   progressBar: { height: 8, backgroundColor: Colors.mutedBg, borderRadius: 4, overflow: 'hidden', marginBottom: 10 },
   progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 4 },
@@ -805,7 +805,7 @@ const s = StyleSheet.create({
   legendRow: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 8, gap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 12, color: Colors.mutedFg },
+  legendText: { fontSize: 14, color: Colors.mutedFg },
 
   section: { padding: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy, marginBottom: 12 },
@@ -815,26 +815,26 @@ const s = StyleSheet.create({
   lessonCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm },
   lessonCardPast: { backgroundColor: Colors.mutedBg },
   lessonDateBox: { borderRadius: Radius.md, padding: 10, alignItems: 'center', marginRight: 14, minWidth: 48 },
-  lessonDow: { fontSize: 10, fontWeight: '700' },
+  lessonDow: { fontSize: 12, fontWeight: '700' },
   lessonDay: { fontSize: 20, fontWeight: '900', color: Colors.navy },
-  lessonMon: { fontSize: 10, color: Colors.mutedFg },
+  lessonMon: { fontSize: 12, color: Colors.mutedFg },
   lessonBody: { flex: 1 },
   lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.navy, flex: 1 },
-  lessonTime: { fontSize: 12, color: Colors.mutedFg },
+  lessonTime: { fontSize: 14, color: Colors.mutedFg },
   todayBadge: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  todayText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  todayText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
   upcomingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm, gap: 10 },
   upcomingBar: { width: 4, height: 40, borderRadius: 2, backgroundColor: Colors.primary },
   upcomingInfo: { flex: 1 },
   upcomingTitle: { fontSize: 14, fontWeight: '700', color: Colors.navy },
-  upcomingDate: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
+  upcomingDate: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
 
   creditBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.navy, margin: 16, marginBottom: 8, borderRadius: Radius.lg, padding: 14, gap: 8 },
   creditBannerText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#fff' },
   creditBannerNum: { fontWeight: '900', fontSize: 17 },
   lowBadge: { backgroundColor: Colors.warning, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
-  lowBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  lowBadgeText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
   payCard: { backgroundColor: '#fff', borderRadius: Radius.xl, marginBottom: 10, padding: 16, borderWidth: 1.5, borderColor: Colors.border, ...Shadow.sm },
   payCardUrgent: { borderColor: Colors.destructive, backgroundColor: '#fff5f5' },
@@ -842,26 +842,26 @@ const s = StyleSheet.create({
   payCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   payCardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   payDesc: { fontSize: 15, fontWeight: '700', color: Colors.navy, marginBottom: 2 },
-  payDate: { fontSize: 12, color: Colors.mutedFg },
+  payDate: { fontSize: 14, color: Colors.mutedFg },
   payAmount: { fontSize: 20, fontWeight: '900', color: Colors.navy },
   payNowBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 9 },
   payNowText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  ddayText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  ddayText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   statusBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  statusText: { fontSize: 11, fontWeight: '700' },
+  statusText: { fontSize: 13, fontWeight: '700' },
 
   reportCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm },
   reportLeft: { alignItems: 'center', minWidth: 44, marginRight: 14 },
-  reportDow: { fontSize: 10, fontWeight: '700', color: Colors.primary },
+  reportDow: { fontSize: 12, fontWeight: '700', color: Colors.primary },
   reportDay: { fontSize: 20, fontWeight: '900', color: Colors.navy },
-  reportMon: { fontSize: 10, color: Colors.mutedFg },
+  reportMon: { fontSize: 12, color: Colors.mutedFg },
   reportBody: { flex: 1 },
   reportTitle: { fontSize: 14, fontWeight: '700', color: Colors.navy },
-  reportTime: { fontSize: 12, color: Colors.mutedFg, marginTop: 1 },
-  reportPreview: { fontSize: 12, color: Colors.primary, marginTop: 3 },
+  reportTime: { fontSize: 14, color: Colors.mutedFg, marginTop: 1 },
+  reportPreview: { fontSize: 14, color: Colors.primary, marginTop: 3 },
   reportStatus: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8 },
-  reportStatusText: { fontSize: 11, fontWeight: '700' },
+  reportStatusText: { fontSize: 13, fontWeight: '700' },
 
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
