@@ -152,7 +152,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{greeting}</Text>
-          <Text style={styles.subGreeting}>오늘도 멋진 레슨 되세요 🎾</Text>
+
         </View>
         {member && (
           <View style={styles.levelBadge}>
