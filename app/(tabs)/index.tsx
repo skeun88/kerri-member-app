@@ -248,31 +248,7 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* 전문 분야 태그 */}
-          {coachProfile?.specialties && coachProfile.specialties.length > 0 && (
-            <View style={styles.tagsRow}>
-              {coachProfile.specialties.map((s, i) => (
-                <View key={i} style={styles.tag}>
-                  <Text style={styles.tagText}>{s}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* 한 줄 소개 */}
-          {coachProfile?.bio && (
-            <Text style={styles.coachBio} numberOfLines={2}>{coachProfile.bio}</Text>
-          )}
-
-          {/* 경력 */}
-          {coachProfile?.career_details && (
-            <View style={styles.careerRow}>
-              <Ionicons name="trophy-outline" size={13} color={Colors.primary} />
-              <Text style={styles.careerText} numberOfLines={2}>{coachProfile.career_details}</Text>
-            </View>
-          )}
-
-          {/* 하단: 메시지 버튼 + 일정 버튼 */}
+          {/* 메시지 + 일정 버튼 */}
           <View style={styles.coachActions}>
             <TouchableOpacity
               style={styles.msgBtn}

@@ -13,7 +13,6 @@ interface MemberProfile {
   remaining_credits: number; is_active: boolean;
 }
 
-const LEVEL_XP: Record<string, number> = { '입문': 100, '초급': 250, '중급': 500, '상급': 800, '선수': 1000 };
 const LEVEL_ORDER = ['입문','초급','중급','상급','선수'];
 
 export default function ProfileScreen() {
@@ -24,7 +23,6 @@ export default function ProfileScreen() {
   const [attendedLessons, setAttendedLessons] = useState(0);
   const [attendanceDots, setAttendanceDots] = useState<boolean[]>([]);
 
-  const [xp, setXp] = useState(0);
   const [editModal, setEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -53,9 +51,7 @@ export default function ProfileScreen() {
       setAttendedLessons(attendedIds.size);
       const dots = (lessons ?? []).map(l => attendedIds.has(l.id));
       setAttendanceDots(dots);
-      // XP 계산
-      const baseXp = attendedIds.size * 10;
-      setXp(baseXp);
+
     }
   }
 
@@ -78,10 +74,6 @@ export default function ProfileScreen() {
   }
 
   const level = profile?.level ?? '입문';
-  const levelIdx = LEVEL_ORDER.indexOf(level);
-  const maxXp = LEVEL_XP[level] ?? 100;
-  const xpProgress = Math.min(1, xp / maxXp);
-  const nextLevel = LEVEL_ORDER[levelIdx + 1] ?? null;
   const initial = (profile?.name ?? email).slice(0, 1).toUpperCase();
   const attendRate = totalLessons > 0 ? Math.round((attendedLessons / totalLessons) * 100) : 0;
 
@@ -115,23 +107,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* XP 바 */}
-          <View style={styles.xpSection}>
-            <View style={styles.xpLabelRow}>
-              <Text style={styles.xpLabel}>XP {xp}</Text>
-              {nextLevel && <Text style={styles.xpNext}>{nextLevel} 까지 {maxXp - xp}xp</Text>}
-            </View>
-            <View style={styles.xpBar}>
-              <View style={[styles.xpFill, { width: `${Math.round(xpProgress * 100)}%` as any }]} />
-            </View>
-          </View>
 
-          {/* 출석 도트 */}
-          <View style={styles.dotsRow}>
-            {attendanceDots.map((done, i) => (
-              <View key={i} style={[styles.dot, done ? styles.dotDone : styles.dotMiss]} />
-            ))}
-          </View>
         </View>
 
         <View style={styles.body}>
@@ -212,16 +188,7 @@ const styles = StyleSheet.create({
   heroEmail: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 2, marginBottom: 6 },
   levelBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.white, alignSelf: 'flex-start', borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
   levelText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  xpSection: { marginHorizontal: 20, marginBottom: 12 },
-  xpLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  xpLabel: { fontSize: 14, fontWeight: '700', color: Colors.white },
-  xpNext: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
-  xpBar: { height: 8, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 4, overflow: 'hidden' },
-  xpFill: { height: '100%', backgroundColor: Colors.white, borderRadius: 4 },
-  dotsRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 20 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  dotDone: { backgroundColor: Colors.white },
-  dotMiss: { backgroundColor: 'rgba(255,255,255,0.25)' },
+
   body: { paddingTop: 16 },
   statsRow: { flexDirection: 'row', backgroundColor: Colors.white, marginHorizontal: 16, borderRadius: Radius.xl, padding: 16, ...Shadow.sm, marginBottom: 16 },
   statCard: { flex: 1, alignItems: 'center' },
@@ -236,8 +203,7 @@ const styles = StyleSheet.create({
   missionCheck: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.border, justifyContent: 'center', alignItems: 'center' },
   missionCheckDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   missionLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foreground },
-  xpTag: { backgroundColor: Colors.primary + '18', borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  xpTagText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+
   growthCard: { backgroundColor: Colors.white, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', ...Shadow.sm },
   growthRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
   growthBorder: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.borderLight },

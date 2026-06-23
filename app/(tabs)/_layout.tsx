@@ -26,6 +26,7 @@ export default function TabsLayout() {
         title: '결제', tabBarLabel: '결제',
         tabBarIcon: ({ color, size }) => <Ionicons name="card" size={size} color={color} />,
         headerTitle: '결제',
+        href: null,
       }} />
       <Tabs.Screen name="report" options={{
         title: '리포트', tabBarLabel: '리포트',
