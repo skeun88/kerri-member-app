@@ -203,9 +203,7 @@ export default function HomeScreen() {
                   <Text style={styles.avatarInitial}>{coachInitials}</Text>
                 </View>
               )}
-              <View style={styles.coachBadge}>
-                <Ionicons name="school" size={10} color="#fff" />
-              </View>
+
             </View>
 
             {/* 이름 + 경력 + 위치 */}
