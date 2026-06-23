@@ -125,7 +125,7 @@ export default function CoachChatScreen() {
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={Colors.navy} />
+          <Ionicons name="chevron-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>코치 메시지</Text>
         <View style={{ width: 40 }} />
@@ -161,7 +161,7 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: Colors.border },
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: Colors.navy },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: Colors.primary },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   emptyTxt: { fontSize: 14, color: Colors.placeholder, textAlign: 'center' },
   dateDivider: { alignItems: 'center', marginVertical: 12 },

@@ -63,11 +63,11 @@ function buildTossHtml(params: {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, sans-serif; background: #FAFAFA; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
     .card { background: white; border-radius: 16px; padding: 28px 24px; width: 100%; max-width: 400px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    h2 { font-size: 18px; font-weight: 800; color: #1B2E4B; margin-bottom: 6px; }
+    h2 { font-size: 18px; font-weight: 800; color: #D2755A; margin-bottom: 6px; }
     .desc { font-size: 13px; color: #8B93A5; margin-bottom: 24px; }
-    .amount { font-size: 28px; font-weight: 800; color: #1B2E4B; margin-bottom: 28px; }
+    .amount { font-size: 28px; font-weight: 800; color: #D2755A; margin-bottom: 28px; }
     .amount span { font-size: 14px; color: #8B93A5; font-weight: 400; }
-    .btn { width: 100%; padding: 16px; background: #1B2E4B; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
+    .btn { width: 100%; padding: 16px; background: #D2755A; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
     .btn-cancel { width: 100%; padding: 14px; background: transparent; color: #8B93A5; border: 1px solid #E5E9F0; border-radius: 12px; font-size: 14px; cursor: pointer; }
     .loading { display: none; text-align: center; color: #8B93A5; font-size: 14px; margin-top: 16px; }
   </style>
@@ -228,7 +228,7 @@ export default function PaymentScreen() {
   }
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color={Colors.navy} /></View>;
+    return <View style={styles.centered}><ActivityIndicator size="large" color={Colors.primary} /></View>;
   }
 
   const totalPending = pending.reduce((s, p) => s + (p.amount - p.paid_amount), 0);
@@ -238,7 +238,7 @@ export default function PaymentScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.navy} />
+          <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.primary} />
         }
         contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       >
@@ -306,7 +306,7 @@ export default function PaymentScreen() {
                 })}
               >
                 <View style={styles.pkgIcon}>
-                  <Ionicons name="tennisball-outline" size={20} color={Colors.navy} />
+                  <Ionicons name="tennisball-outline" size={20} color={Colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.pkgTitle}>{pkg.title}</Text>
@@ -337,7 +337,7 @@ export default function PaymentScreen() {
                     <Text style={styles.cardTitle}>{h.description}</Text>
                     <Text style={styles.cardSub}>{h.paid_date} · {h.payment_method ?? (h.payment_channel === 'online' ? '카드' : '오프라인')}</Text>
                   </View>
-                  <Text style={[styles.cardAmount, { color: Colors.success }]}>{h.paid_amount.toLocaleString()}원</Text>
+                  <Text style={[styles.cardAmount, { color: Colors.primary }]}>{h.paid_amount.toLocaleString()}원</Text>
                 </View>
               </View>
             ))
@@ -349,7 +349,7 @@ export default function PaymentScreen() {
       {confirming && (
         <View style={styles.confirmingOverlay}>
           <View style={styles.confirmingBox}>
-            <ActivityIndicator size="large" color={Colors.navy} />
+            <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.confirmingText}>결제 처리 중...</Text>
           </View>
         </View>
@@ -360,7 +360,7 @@ export default function PaymentScreen() {
         <View style={styles.webViewContainer}>
           <View style={styles.webViewHeader}>
             <TouchableOpacity onPress={() => { setWebViewVisible(false); setPaymentParams(null); }} style={styles.webViewClose}>
-              <Ionicons name="close" size={22} color={Colors.navy} />
+              <Ionicons name="close" size={22} color={Colors.primary} />
             </TouchableOpacity>
             <Text style={styles.webViewTitle}>결제하기</Text>
             <View style={{ width: 36 }} />
@@ -373,7 +373,7 @@ export default function PaymentScreen() {
               javaScriptEnabled
               domStorageEnabled
               startInLoadingState
-              renderLoading={() => <View style={styles.webViewLoading}><ActivityIndicator size="large" color={Colors.navy} /></View>}
+              renderLoading={() => <View style={styles.webViewLoading}><ActivityIndicator size="large" color={Colors.primary} /></View>}
             />
           )}
         </View>
@@ -390,31 +390,31 @@ const styles = StyleSheet.create({
   alertTitle: { fontSize: 13, color: Colors.warning, fontWeight: '700', marginBottom: 2 },
   alertAmount: { fontSize: 20, fontWeight: '800', color: Colors.warning },
   section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.navy, marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary, marginBottom: 10 },
   card: { backgroundColor: Colors.card, borderRadius: Radius.xl, padding: 16, borderWidth: 1, borderColor: Colors.border, marginBottom: 10, ...Shadow.sm },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: Colors.navy },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: Colors.primary },
   cardSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardAmount: { fontSize: 18, fontWeight: '800', color: Colors.navy },
+  cardAmount: { fontSize: 18, fontWeight: '800', color: Colors.primary },
   unpaidBadge: { backgroundColor: Colors.destructive + '15', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   unpaidBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.destructive },
-  payBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.navy, borderRadius: Radius.md, paddingHorizontal: 16, paddingVertical: 10 },
+  payBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: 16, paddingVertical: 10 },
   payBtnText: { color: Colors.white, fontSize: 14, fontWeight: '700' },
   pkgCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderRadius: Radius.xl, padding: 16, borderWidth: 1, borderColor: Colors.border, marginBottom: 8, ...Shadow.sm, gap: 12 },
-  pkgIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.navy + '10', justifyContent: 'center', alignItems: 'center' },
-  pkgTitle: { fontSize: 15, fontWeight: '700', color: Colors.navy },
+  pkgIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primary + '10', justifyContent: 'center', alignItems: 'center' },
+  pkgTitle: { fontSize: 15, fontWeight: '700', color: Colors.primary },
   pkgSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
   pkgRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pkgPrice: { fontSize: 16, fontWeight: '800', color: Colors.navy },
+  pkgPrice: { fontSize: 16, fontWeight: '800', color: Colors.primary },
   empty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
   emptyText: { fontSize: 14, color: Colors.mutedFg },
   confirmingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   confirmingBox: { backgroundColor: Colors.white, borderRadius: 16, padding: 32, alignItems: 'center', gap: 16 },
-  confirmingText: { fontSize: 15, fontWeight: '700', color: Colors.navy },
+  confirmingText: { fontSize: 15, fontWeight: '700', color: Colors.primary },
   webViewContainer: { flex: 1, backgroundColor: Colors.white },
   webViewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
   webViewClose: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
-  webViewTitle: { fontSize: 17, fontWeight: '700', color: Colors.navy },
+  webViewTitle: { fontSize: 17, fontWeight: '700', color: Colors.primary },
   webViewLoading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
 });

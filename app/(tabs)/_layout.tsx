@@ -5,7 +5,7 @@ import { Colors } from '../../lib/theme';
 export default function TabsLayout() {
   return (
     <Tabs screenOptions={{
-      tabBarActiveTintColor: Colors.navy,
+      tabBarActiveTintColor: Colors.primary,
       tabBarInactiveTintColor: Colors.mutedFg,
       tabBarStyle: { borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.white, paddingBottom: 4 },
       headerStyle: { backgroundColor: Colors.primary },

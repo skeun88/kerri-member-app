@@ -1,14 +1,15 @@
 /**
- * Design tokens — inspired by quickcoach-tap
- * Primary: Teal #3FA69E | Navy #1B2E4B | Mint #00C9A7
+ * Design tokens — Terracotta theme (member app)
+ * Primary: Terracotta #D2755A | Accent Warm #E89B7E
  */
 
 export const Colors = {
   // Brand
-  primary: '#3FA69E',       // teal — was #1a7a4a
-  primaryLight: '#E6F7F6',  // teal light — was #f0fdf4 / #e8f5ee
-  navy: '#1B2E4B',          // deep navy — used for headers / dark surfaces
-  mint: '#00C9A7',          // mint accent
+  primary: '#D2755A',       // terracotta
+  primaryLight: '#FBF2EF',  // terracotta light
+  navy: '#D2755A',          // alias → terracotta (하드코딩 navy 참조 자동 반영)
+  accentWarm: '#E89B7E',    // warm coral accent
+  mint: '#E89B7E',          // alias → accentWarm
 
   // Backgrounds
   background: '#FAFAFA',    // was #f5f7fa
@@ -41,13 +42,13 @@ export const Colors = {
   transparent: 'transparent',
   iconMuted: '#B0B7C3',     // was #ccc
 
-  // Level badge colors (member levels)
+  // Level badge colors (member levels) — warm terracotta palette
   level: {
-    입문: '#94A3B8',
-    초급: '#22C55E',
-    중급: '#3B82F6',        // was #2563eb
-    고급: '#1B2E4B',        // was #7c3aed
-    선수: '#EF4444',        // was #dc2626
+    입문: '#B0B7C3',
+    초급: '#E89B7E',        // warm coral
+    중급: '#D2755A',        // terracotta
+    고급: '#B85A42',        // deep terracotta
+    선수: '#1B2E4B',        // navy — elite
   },
 };
 

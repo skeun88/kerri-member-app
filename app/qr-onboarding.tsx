@@ -99,7 +99,7 @@ export default function QROnboardingScreen() {
   if (step === 'done') {
     return (
       <View style={s.center}>
-        <Ionicons name="checkmark-circle" size={64} color={Colors.success} />
+        <Ionicons name="checkmark-circle" size={64} color={Colors.primary} />
         <Text style={s.doneTitle}>신청 완료! 🎾</Text>
         <Text style={s.doneSub}>코치님께 연락이 갈 거예요.{'\n'}앱을 계속 사용하려면 회원 가입 후 초대 코드를 입력해주세요.</Text>
         <TouchableOpacity style={s.doneBtn} onPress={() => router.replace('/')}>
@@ -221,12 +221,12 @@ const s = StyleSheet.create({
   avatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
   avatarFallback: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   avatarInitial: { fontSize: 32, fontWeight: '800', color: '#fff' },
-  coachName: { fontSize: 20, fontWeight: '800', color: Colors.navy, marginBottom: 4 },
+  coachName: { fontSize: 20, fontWeight: '800', color: Colors.primary, marginBottom: 4 },
   coachSub: { fontSize: 13, color: Colors.mutedFg, marginBottom: 4 },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
   locText: { fontSize: 12, color: Colors.mutedFg },
   bio: { fontSize: 13, color: Colors.foreground, textAlign: 'center', lineHeight: 20 },
-  sectionTitle: { fontSize: 17, fontWeight: '800', color: Colors.navy, marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: Colors.primary, marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
   sectionSub: { fontSize: 13, color: Colors.mutedFg, marginHorizontal: 16, marginBottom: 16 },
   pkgCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 10, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', ...Shadow.sm },
   pkgColorBar: { width: 6, alignSelf: 'stretch' },
@@ -240,7 +240,7 @@ const s = StyleSheet.create({
   skipText: { fontSize: 13, color: Colors.mutedFg },
   input: { backgroundColor: '#fff', borderRadius: Radius.lg, marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: Colors.foreground, borderWidth: 1, borderColor: Colors.border },
   empty: { fontSize: 14, color: Colors.placeholder, textAlign: 'center', margin: 24 },
-  doneTitle: { fontSize: 22, fontWeight: '800', color: Colors.navy, marginTop: 16, marginBottom: 8 },
+  doneTitle: { fontSize: 22, fontWeight: '800', color: Colors.primary, marginTop: 16, marginBottom: 8 },
   doneSub: { fontSize: 14, color: Colors.mutedFg, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
   doneBtn: { backgroundColor: Colors.primary, borderRadius: Radius.lg, paddingHorizontal: 32, paddingVertical: 14 },
   doneBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },

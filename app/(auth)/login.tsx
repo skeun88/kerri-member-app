@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   appName: { fontSize: 26, fontWeight: '800', color: Colors.white },
   appSub: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
   card: { backgroundColor: Colors.white, borderRadius: Radius.xl, padding: 24, ...Shadow.md },
-  cardTitle: { fontSize: 20, fontWeight: '800', color: Colors.navy, marginBottom: 20 },
+  cardTitle: { fontSize: 20, fontWeight: '800', color: Colors.primary, marginBottom: 20 },
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 13, fontWeight: '600', color: Colors.mutedFg, marginBottom: 6 },
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.mutedBg, borderRadius: Radius.md, paddingHorizontal: 12, borderWidth: 1, borderColor: Colors.border },

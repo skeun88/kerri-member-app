@@ -180,7 +180,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
       <View style={s.legendRow}>
         <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: '#aaa' }]} /><Text style={s.legendText}>예약됨</Text></View>
-        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: Colors.success }]} /><Text style={s.legendText}>예약 가능</Text></View>
+        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: Colors.primary }]} /><Text style={s.legendText}>예약 가능</Text></View>
       </View>
 
       {loadingSlots && <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} />}
@@ -199,10 +199,10 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {availableSlots.map(slot => (
                 <TouchableOpacity key={slot}
-                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.success + '18', borderWidth: 1, borderColor: Colors.success }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.primary + '18', borderWidth: 1, borderColor: Colors.primary }}
                   onPress={() => { setBookingSlot(slot); setBookingModal(true); }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.success }}>{slot}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.success + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.primary }}>{slot}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.primary + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -216,7 +216,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
           {myRequests.slice(0, 5).map(req => (
             <View key={req.id} style={[s.upcomingCard, {
               borderLeftWidth: 4,
-              borderLeftColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.success : Colors.destructive,
+              borderLeftColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.primary : Colors.destructive,
             }]}>
               <View style={s.upcomingInfo}>
                 <Text style={s.upcomingTitle}>{req.requested_date} {req.start_time.slice(0,5)}</Text>
@@ -231,7 +231,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                 ) : null}
               </View>
               <View style={[s.todayBadge, {
-                backgroundColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.success : Colors.destructive
+                backgroundColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.primary : Colors.destructive
               }]}>
                 <Text style={s.todayText}>{
                   req.status === 'pending' ? '대기' : req.status === 'accepted' ? '수락' : '거절'
@@ -262,7 +262,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
             />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TouchableOpacity style={[s.modalCloseBtn, { flex: 1, backgroundColor: Colors.mutedBg }]} onPress={() => setBookingModal(false)}>
-                <Text style={[s.modalCloseBtnText, { color: Colors.navy }]}>취소</Text>
+                <Text style={[s.modalCloseBtnText, { color: Colors.primary }]}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.modalCloseBtn, { flex: 1 }]} onPress={submitRequest} disabled={sending}>
                 {sending ? <ActivityIndicator color="#fff" /> : <Text style={s.modalCloseBtnText}>예약 요청</Text>}
@@ -298,16 +298,16 @@ function CalendarView({
     <View style={cal.container}>
       <View style={cal.header}>
         <TouchableOpacity onPress={onPrevMonth} style={cal.navBtn}>
-          <Ionicons name="chevron-back" size={20} color={Colors.navy} />
+          <Ionicons name="chevron-back" size={20} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={cal.title}>{year}년 {MONTHS[month]}</Text>
         <TouchableOpacity onPress={onNextMonth} style={cal.navBtn}>
-          <Ionicons name="chevron-forward" size={20} color={Colors.navy} />
+          <Ionicons name="chevron-forward" size={20} color={Colors.primary} />
         </TouchableOpacity>
       </View>
       <View style={cal.dayRow}>
         {DAYS_KR.map((d, i) => (
-          <Text key={i} style={[cal.dayLabel, i === 0 && { color: Colors.destructive }, i === 6 && { color: Colors.info }]}>{d}</Text>
+          <Text key={i} style={[cal.dayLabel, i === 0 && { color: Colors.destructive }, i === 6 && { color: Colors.accentWarm }]}>{d}</Text>
         ))}
       </View>
       <View style={cal.grid}>
@@ -324,7 +324,7 @@ function CalendarView({
                 <Text style={[
                   cal.dayNum,
                   dow === 0 && { color: Colors.destructive },
-                  dow === 6 && { color: Colors.info },
+                  dow === 6 && { color: Colors.accentWarm },
                   isSelected && { color: '#fff' },
                   isToday && !isSelected && { color: Colors.primary, fontWeight: '800' },
                 ]}>{day}</Text>
@@ -342,7 +342,7 @@ const cal = StyleSheet.create({
   container: { backgroundColor: '#fff', borderRadius: Radius.xl, marginHorizontal: 16, marginTop: 12, padding: 16, ...Shadow.sm },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   navBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 16, fontWeight: '800', color: Colors.navy },
+  title: { fontSize: 16, fontWeight: '800', color: Colors.primary },
   dayRow: { flexDirection: 'row', marginBottom: 4 },
   dayLabel: { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: Colors.mutedFg, paddingVertical: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
@@ -516,7 +516,7 @@ export default function ScheduleScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.navy} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.primary} />}
       >
         {/* ── 레슨 진행률 카드 (일정·보강 탭에서 표시) ── */}
         {(tab === 'schedule' || tab === 'makeup') && member && (
@@ -656,8 +656,8 @@ export default function ScheduleScreen() {
                       <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
                       <Text style={s.payDate}>납부일: {(p as any).paid_date ?? p.due_date}</Text>
                     </View>
-                    <View style={[s.statusBadge, { backgroundColor: Colors.successLight ?? '#e6f9f0' }]}>
-                      <Text style={[s.statusText, { color: Colors.success }]}>납부완료</Text>
+                    <View style={[s.statusBadge, { backgroundColor: Colors.primaryLight ?? '#e6f9f0' }]}>
+                      <Text style={[s.statusText, { color: Colors.primary }]}>납부완료</Text>
                     </View>
                   </View>
                   <Text style={s.payAmount}>{p.amount.toLocaleString()}원</Text>
@@ -790,7 +790,7 @@ const s = StyleSheet.create({
 
   progressCard: { backgroundColor: '#fff', borderRadius: Radius.xl, margin: 16, marginBottom: 0, padding: 16, ...Shadow.sm },
   progressTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy },
+  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary },
   progressSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
   progressCount: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   progressBar: { height: 8, backgroundColor: Colors.mutedBg, borderRadius: 4, overflow: 'hidden', marginBottom: 10 },
@@ -808,7 +808,7 @@ const s = StyleSheet.create({
   legendText: { fontSize: 14, color: Colors.mutedFg },
 
   section: { padding: 16 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy, marginBottom: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary, marginBottom: 12 },
   empty: { alignItems: 'center', padding: 32, gap: 8 },
   emptyText: { fontSize: 14, color: Colors.placeholder, textAlign: 'center' },
 
@@ -816,10 +816,10 @@ const s = StyleSheet.create({
   lessonCardPast: { backgroundColor: Colors.mutedBg },
   lessonDateBox: { borderRadius: Radius.md, padding: 10, alignItems: 'center', marginRight: 14, minWidth: 48 },
   lessonDow: { fontSize: 12, fontWeight: '700' },
-  lessonDay: { fontSize: 20, fontWeight: '900', color: Colors.navy },
+  lessonDay: { fontSize: 20, fontWeight: '900', color: Colors.primary },
   lessonMon: { fontSize: 12, color: Colors.mutedFg },
   lessonBody: { flex: 1 },
-  lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.navy, flex: 1 },
+  lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.primary, flex: 1 },
   lessonTime: { fontSize: 14, color: Colors.mutedFg },
   todayBadge: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
   todayText: { fontSize: 12, fontWeight: '700', color: '#fff' },
@@ -827,10 +827,10 @@ const s = StyleSheet.create({
   upcomingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm, gap: 10 },
   upcomingBar: { width: 4, height: 40, borderRadius: 2, backgroundColor: Colors.primary },
   upcomingInfo: { flex: 1 },
-  upcomingTitle: { fontSize: 14, fontWeight: '700', color: Colors.navy },
+  upcomingTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
   upcomingDate: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
 
-  creditBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.navy, margin: 16, marginBottom: 8, borderRadius: Radius.lg, padding: 14, gap: 8 },
+  creditBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, margin: 16, marginBottom: 8, borderRadius: Radius.lg, padding: 14, gap: 8 },
   creditBannerText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#fff' },
   creditBannerNum: { fontWeight: '900', fontSize: 17 },
   lowBadge: { backgroundColor: Colors.warning, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
@@ -841,9 +841,9 @@ const s = StyleSheet.create({
   payCardDone: { backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, borderWidth: 1, borderColor: Colors.border },
   payCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   payCardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  payDesc: { fontSize: 15, fontWeight: '700', color: Colors.navy, marginBottom: 2 },
+  payDesc: { fontSize: 15, fontWeight: '700', color: Colors.primary, marginBottom: 2 },
   payDate: { fontSize: 14, color: Colors.mutedFg },
-  payAmount: { fontSize: 20, fontWeight: '900', color: Colors.navy },
+  payAmount: { fontSize: 20, fontWeight: '900', color: Colors.primary },
   payNowBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 9 },
   payNowText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
@@ -854,10 +854,10 @@ const s = StyleSheet.create({
   reportCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm },
   reportLeft: { alignItems: 'center', minWidth: 44, marginRight: 14 },
   reportDow: { fontSize: 12, fontWeight: '700', color: Colors.primary },
-  reportDay: { fontSize: 20, fontWeight: '900', color: Colors.navy },
+  reportDay: { fontSize: 20, fontWeight: '900', color: Colors.primary },
   reportMon: { fontSize: 12, color: Colors.mutedFg },
   reportBody: { flex: 1 },
-  reportTitle: { fontSize: 14, fontWeight: '700', color: Colors.navy },
+  reportTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
   reportTime: { fontSize: 14, color: Colors.mutedFg, marginTop: 1 },
   reportPreview: { fontSize: 14, color: Colors.primary, marginTop: 3 },
   reportStatus: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8 },
@@ -866,7 +866,7 @@ const s = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
   modalHandle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.navy, marginBottom: 6 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
   modalDate: { fontSize: 13, color: Colors.mutedFg, marginBottom: 16 },
   reportBox: { backgroundColor: Colors.mutedBg, borderRadius: Radius.lg, padding: 14, marginBottom: 16 },
   reportBoxHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },

@@ -125,7 +125,7 @@ export default function ReportScreen() {
 
   return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.navy} />
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
@@ -148,7 +148,7 @@ export default function ReportScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadReports(); setRefreshing(false); }} tintColor={Colors.navy} />
+          <RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadReports(); setRefreshing(false); }} tintColor={Colors.primary} />
         }
       >
         {reports.length === 0 ? (
@@ -252,11 +252,11 @@ export default function ReportScreen() {
                             <Text style={styles.practiceDesc}>{item.description}</Text>
                             <View style={styles.practiceMeta}>
                               <View style={styles.metaChip}>
-                                <Ionicons name="time-outline" size={12} color={Colors.navy} />
+                                <Ionicons name="time-outline" size={12} color={Colors.primary} />
                                 <Text style={styles.metaText}>{item.duration}</Text>
                               </View>
                               <View style={styles.metaChip}>
-                                <Ionicons name="repeat-outline" size={12} color={Colors.navy} />
+                                <Ionicons name="repeat-outline" size={12} color={Colors.primary} />
                                 <Text style={styles.metaText}>{item.frequency}</Text>
                               </View>
                             </View>
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   header: {
-    backgroundColor: Colors.navy,
+    backgroundColor: Colors.primary,
     paddingTop: 56,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -297,8 +297,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
   headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  unreadBadge: { backgroundColor: Colors.mint, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
-  unreadText: { fontSize: 12, fontWeight: '800', color: Colors.navy },
+  unreadBadge: { backgroundColor: Colors.accentWarm, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
+  unreadText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
 
   emptyBox: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.foreground },
@@ -316,13 +316,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
-  cardUnread: { borderLeftWidth: 3, borderLeftColor: Colors.mint },
+  cardUnread: { borderLeftWidth: 3, borderLeftColor: Colors.accentWarm },
 
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   cardDate: { fontSize: 12, color: Colors.mutedFg, fontWeight: '600' },
-  newBadge: { backgroundColor: Colors.mint, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
-  newBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.navy },
+  newBadge: { backgroundColor: Colors.accentWarm, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  newBadgeText: { fontSize: 10, fontWeight: '800', color: Colors.primary },
   cardPreview: { fontSize: 14, color: Colors.foreground, lineHeight: 20 },
 
   detail: { marginTop: 4 },
@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
   section: { marginBottom: 20 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   sectionIcon: { fontSize: 16 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary },
 
   summaryBox: {
     backgroundColor: Colors.primaryLight || '#EEF4FF',
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   summaryText: { fontSize: 14, color: Colors.foreground, lineHeight: 22 },
 
   achievementRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
-  achievementDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.mint, marginTop: 7, flexShrink: 0 },
+  achievementDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.accentWarm, marginTop: 7, flexShrink: 0 },
   achievementText: { fontSize: 14, color: Colors.foreground, lineHeight: 22, flex: 1 },
 
   improveRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
   practiceHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   practiceIdx: {
     width: 24, height: 24, borderRadius: 12,
-    backgroundColor: Colors.navy,
+    backgroundColor: Colors.primary,
     justifyContent: 'center', alignItems: 'center',
   },
   practiceIdxText: { fontSize: 12, fontWeight: '800', color: '#fff' },
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0F2FE', borderRadius: 8,
     paddingHorizontal: 8, paddingVertical: 3,
   },
-  metaText: { fontSize: 12, color: Colors.navy, fontWeight: '600' },
+  metaText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
   tipBox: {
     backgroundColor: '#FFFBEB',
     borderRadius: 8,

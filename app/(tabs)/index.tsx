@@ -146,7 +146,7 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.navy} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.primary} />}
     >
       {/* 헤더 */}
       <View style={styles.header}>
@@ -240,7 +240,7 @@ export default function HomeScreen() {
                 <QRCode
                   value={`kerri://join?coach_id=${member.coach_id}`}
                   size={68}
-                  color="#1B2E4B"
+                  color="#D2755A"
                   backgroundColor="#fff"
                 />
                 <Text style={styles.qrSmallLabel}>탭하면 확대</Text>
@@ -308,7 +308,7 @@ export default function HomeScreen() {
                 <QRCode
                   value={`kerri://join?coach_id=${member.coach_id}`}
                   size={200}
-                  color="#1B2E4B"
+                  color="#D2755A"
                   backgroundColor="#fff"
                 />
               </View>
@@ -402,7 +402,7 @@ export default function HomeScreen() {
             activeOpacity={0.85}
           >
             <View style={styles.paymentBannerLeft}>
-              <Ionicons name="card-outline" size={20} color={dday.urgent ? Colors.destructive : Colors.navy} />
+              <Ionicons name="card-outline" size={20} color={dday.urgent ? Colors.destructive : Colors.primary} />
               <View style={{ marginLeft: 10 }}>
                 <Text style={[styles.paymentBannerTitle, dday.urgent && { color: Colors.destructive }]}>결제 예정</Text>
                 <Text style={styles.paymentBannerSub}>
@@ -410,7 +410,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
             </View>
-            <View style={[styles.ddayBadge, { backgroundColor: dday.urgent ? Colors.destructive : Colors.navy }]}>
+            <View style={[styles.ddayBadge, { backgroundColor: dday.urgent ? Colors.destructive : Colors.primary }]}>
               <Text style={styles.ddayText}>{dday.label}</Text>
             </View>
           </TouchableOpacity>
@@ -499,7 +499,7 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: '#fff',
   },
   coachNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  coachName: { fontSize: 17, fontWeight: '800', color: Colors.navy },
+  coachName: { fontSize: 17, fontWeight: '800', color: Colors.primary },
   coachExp: { fontSize: 14, color: Colors.mutedFg },
   coachLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
   coachLoc: { fontSize: 14, color: Colors.mutedFg },
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   qrSmallLabel: { fontSize: 9, color: Colors.mutedFg, marginTop: 2 },
   qrModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   qrModalCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', width: 300 },
-  qrModalTitle: { fontSize: 18, fontWeight: '800', color: Colors.navy, marginBottom: 6 },
+  qrModalTitle: { fontSize: 18, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
   qrModalSub: { fontSize: 13, color: Colors.mutedFg, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
   qrModalBox: { padding: 16, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: Colors.border, marginBottom: 20 },
   qrShareBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   coachBio: { fontSize: 13, color: Colors.mutedFg, lineHeight: 20, marginBottom: 8 },
 
   careerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
-  careerText: { fontSize: 14, color: Colors.navy, lineHeight: 18, flex: 1 },
+  careerText: { fontSize: 14, color: Colors.primary, lineHeight: 18, flex: 1 },
 
   coachActions: {
     flexDirection: 'row', gap: 8,
@@ -554,7 +554,7 @@ const styles = StyleSheet.create({
   scheduleBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 10, borderRadius: Radius.md,
-    backgroundColor: Colors.navy,
+    backgroundColor: Colors.primary,
   },
   scheduleBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
   },
   paymentBannerUrgent: { borderColor: Colors.destructive, backgroundColor: '#fff5f5' },
   paymentBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  paymentBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.navy },
+  paymentBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
   paymentBannerSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 1 },
   ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 4 },
   ddayText: { fontSize: 14, fontWeight: '800', color: '#fff' },
@@ -578,7 +578,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16, marginBottom: 8, padding: 16, ...Shadow.sm,
   },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.navy },
+  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary },
   progressSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
   progressCount: { fontSize: 13, color: Colors.mutedFg },
   progressDone: { fontSize: 15, fontWeight: '800', color: Colors.primary },
@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
   scheduleBoxLabel: { fontSize: 14, fontWeight: '600', color: Colors.mutedFg },
   scheduleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   scheduleChip: { backgroundColor: '#fff', borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: Colors.border },
-  scheduleChipText: { fontSize: 14, color: Colors.navy, fontWeight: '600' },
+  scheduleChipText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
   allDoneBox: { marginTop: 10, backgroundColor: Colors.primary + '12', borderRadius: Radius.md, padding: 10, alignItems: 'center' },
   allDoneText: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
 
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginHorizontal: 16, marginTop: 8, marginBottom: 8,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.navy },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary },
   seeAll: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
   emptyCard: {
     alignItems: 'center', backgroundColor: '#fff',
@@ -614,10 +614,10 @@ const styles = StyleSheet.create({
   lessonCardToday: { backgroundColor: Colors.primary + '10', borderWidth: 1.5, borderColor: Colors.primary },
   lessonDateBox: { alignItems: 'center', minWidth: 44, marginRight: 14 },
   lessonMon: { fontSize: 12, color: Colors.mutedFg, fontWeight: '600' },
-  lessonDay: { fontSize: 22, fontWeight: '900', color: Colors.navy },
+  lessonDay: { fontSize: 22, fontWeight: '900', color: Colors.primary },
   lessonDow: { fontSize: 13, color: Colors.mutedFg, fontWeight: '600' },
   lessonInfo: { flex: 1 },
-  lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.navy },
+  lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.primary },
   lessonTime: { fontSize: 13, color: Colors.mutedFg, marginTop: 2 },
   todayBadge: {
     marginTop: 4, alignSelf: 'flex-start',
@@ -632,12 +632,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.primary + '40',
     ...Shadow.sm,
   },
-  inviteTitle: { fontSize: 16, fontWeight: '700', color: Colors.navy, marginBottom: 8, textAlign: 'center' },
+  inviteTitle: { fontSize: 16, fontWeight: '700', color: Colors.primary, marginBottom: 8, textAlign: 'center' },
   inviteDesc: { fontSize: 13, color: Colors.mutedFg, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
   inviteInput: {
     width: '100%', backgroundColor: Colors.mutedBg, borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 14,
-    fontSize: 20, fontWeight: '800', color: Colors.navy,
+    fontSize: 20, fontWeight: '800', color: Colors.primary,
     textAlign: 'center', letterSpacing: 4,
     borderWidth: 1.5, borderColor: Colors.border, marginBottom: 12,
   },
