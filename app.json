@@ -13,14 +13,14 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "bundleIdentifier": "com.kerri.member",
+      "bundleIdentifier": "com.kerri.memberapp",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.kerri.member"
+      "package": "com.kerri.memberapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
