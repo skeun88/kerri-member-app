@@ -219,7 +219,7 @@ export default function HomeScreen() {
               {(coachProfile?.region_city || coachProfile?.center_name) && (
                 <View style={styles.coachLocRow}>
                   <Ionicons name="location-outline" size={12} color={Colors.mutedFg} />
-                  <Text style={styles.coachLoc}>
+                  <Text style={styles.coachLoc} numberOfLines={1} ellipsizeMode="tail">
                     {[coachProfile.center_name, coachProfile.region_city, coachProfile.region_district]
                       .filter(Boolean).join(' · ')}
                   </Text>
@@ -475,8 +475,8 @@ const styles = StyleSheet.create({
   coachNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
   coachName: { fontSize: 17, fontWeight: '800', color: Colors.primary },
   coachExp: { fontSize: 14, color: Colors.mutedFg },
-  coachLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-  coachLoc: { fontSize: 14, color: Colors.mutedFg },
+  coachLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6, flex: 1 },
+  coachLoc: { fontSize: 14, color: Colors.mutedFg, flexShrink: 1 },
   myCoachBadge: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.primary + '18', borderRadius: Radius.full,
