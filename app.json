@@ -2,7 +2,6 @@
   "expo": {
     "name": "KERRI Member",
     "slug": "kerri-member",
-    "owner": "skeun",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -35,9 +34,7 @@
     ],
     "extra": {
       "router": {},
-      "eas": {
-        "projectId": "813fa498-10e9-4308-a7e6-da20197d1ec2"
-      }
+      "eas": {}
     }
   }
 }
