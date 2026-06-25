@@ -16,7 +16,6 @@
     },
     "production": {
       "autoIncrement": true,
-      "submitProfile": "production",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
