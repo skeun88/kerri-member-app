@@ -38,5 +38,6 @@ yarn-error.*
 
 # generated native folders
 /ios
+!ios/Podfile.properties.json
 /android
 .env
