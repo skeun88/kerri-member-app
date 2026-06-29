@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
-import * as Sharing from 'expo-sharing';
+import { Share } from 'react-native';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
@@ -289,9 +289,13 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.qrShareBtn}
                 onPress={async () => {
-                  const available = await Sharing.isAvailableAsync();
-                  if (!available) { setQrModalVisible(false); return; }
-                  await Sharing.shareAsync(`kerri://join?coach_id=${member.coach_id}`);
+                  try {
+                    await Share.share({
+                      message: `KERRI 앱으로 테니스 레슨을 관리해보세요! 코치 초대 링크: kerri://join?coach_id=${member.coach_id}`,
+                    });
+                  } catch (e) {
+                    // 공유 취소 시 무시
+                  }
                 }}
               >
                 <Ionicons name="share-outline" size={18} color="#fff" />
