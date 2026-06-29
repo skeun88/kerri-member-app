@@ -1,9 +1,8 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Modal, Alert, ActivityIndicator,
+  RefreshControl, Alert, ActivityIndicator,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
@@ -113,11 +112,6 @@ export default function PaymentScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 결제 WebView
-  const [webViewVisible, setWebViewVisible] = useState(false);
-  const [paymentParams, setPaymentParams] = useState<{
-    orderId: string; orderName: string; amount: number; targetPaymentId?: string; targetPackageId?: string;
-  } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   async function loadData() {
@@ -160,71 +154,7 @@ export default function PaymentScreen() {
   }, [memberId]);
 
   function openPayment(params: { orderId: string; orderName: string; amount: number; targetPaymentId?: string; targetPackageId?: string }) {
-    setPaymentParams(params);
-    setWebViewVisible(true);
-  }
-
-  async function handlePaymentSuccess(paymentKey: string, orderId: string, amount: number) {
-    setWebViewVisible(false);
-    setConfirming(true);
-
-    try {
-      // Edge Function으로 결제 승인 요청
-      const { data, error } = await supabase.functions.invoke('confirm-toss-payment', {
-        body: {
-          paymentKey,
-          orderId,
-          amount,
-          memberId,
-          coachId,
-          targetPaymentId: paymentParams?.targetPaymentId,
-          targetPackageId: paymentParams?.targetPackageId,
-          platformFeeRate: PLATFORM_FEE_RATE,
-        },
-      });
-
-      if (error || !data?.success) {
-        Alert.alert('결제 오류', '결제 승인 중 오류가 발생했습니다. 고객센터에 문의해주세요.');
-      } else {
-        Alert.alert('결제 완료 🎾', '결제가 성공적으로 처리됐습니다!');
-        await loadData();
-      }
-    } catch (e) {
-      Alert.alert('오류', '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-    }
-
-    setConfirming(false);
-    setPaymentParams(null);
-  }
-
-  function handleWebViewMessage(data: string) {
-    try {
-      const msg = JSON.parse(data);
-      if (msg.type === 'CANCEL') {
-        setWebViewVisible(false);
-        setPaymentParams(null);
-      } else if (msg.type === 'ERROR') {
-        setWebViewVisible(false);
-        setPaymentParams(null);
-        if (msg.message && !msg.message.includes('취소')) {
-          Alert.alert('결제 실패', msg.message);
-        }
-      }
-    } catch {}
-  }
-
-  function handleNavigationChange(url: string) {
-    if (url.startsWith('https://success.kerri.app')) {
-      const u = new URL(url);
-      const paymentKey = u.searchParams.get('paymentKey') ?? '';
-      const orderId = u.searchParams.get('orderId') ?? '';
-      const amount = parseInt(u.searchParams.get('amount') ?? '0');
-      handlePaymentSuccess(paymentKey, orderId, amount);
-    } else if (url.startsWith('https://fail.kerri.app')) {
-      setWebViewVisible(false);
-      setPaymentParams(null);
-      Alert.alert('결제 실패', '결제에 실패했습니다. 다시 시도해주세요.');
-    }
+    Alert.alert('결제 안내', '코치에게 직접 결제 방법을 문의해주세요.');
   }
 
   if (loading) {
@@ -274,12 +204,7 @@ export default function PaymentScreen() {
                   <Text style={styles.cardAmount}>{(p.amount - p.paid_amount).toLocaleString()}원</Text>
                   <TouchableOpacity
                     style={styles.payBtn}
-                    onPress={() => openPayment({
-                      orderId: generateOrderId(),
-                      orderName: p.description,
-                      amount: p.amount - p.paid_amount,
-                      targetPaymentId: p.id,
-                    })}
+                    onPress={() => openPayment({ orderId: generateOrderId(), orderName: p.description, amount: p.amount - p.paid_amount, targetPaymentId: p.id })}
                   >
                     <Ionicons name="card-outline" size={14} color={Colors.white} />
                     <Text style={styles.payBtnText}>결제하기</Text>
@@ -298,12 +223,7 @@ export default function PaymentScreen() {
               <TouchableOpacity
                 key={pkg.id}
                 style={styles.pkgCard}
-                onPress={() => openPayment({
-                  orderId: generateOrderId(),
-                  orderName: pkg.title,
-                  amount: pkg.price,
-                  targetPackageId: pkg.id,
-                })}
+                onPress={() => openPayment({ orderId: generateOrderId(), orderName: pkg.title, amount: pkg.price, targetPackageId: pkg.id })}
               >
                 <View style={styles.pkgIcon}>
                   <Ionicons name="tennisball-outline" size={20} color={Colors.primary} />
@@ -345,7 +265,6 @@ export default function PaymentScreen() {
         </View>
       </ScrollView>
 
-      {/* 결제 승인 로딩 */}
       {confirming && (
         <View style={styles.confirmingOverlay}>
           <View style={styles.confirmingBox}>
@@ -354,30 +273,6 @@ export default function PaymentScreen() {
           </View>
         </View>
       )}
-
-      {/* Toss 결제 WebView 모달 */}
-      <Modal visible={webViewVisible} animationType="slide" onRequestClose={() => { setWebViewVisible(false); setPaymentParams(null); }}>
-        <View style={styles.webViewContainer}>
-          <View style={styles.webViewHeader}>
-            <TouchableOpacity onPress={() => { setWebViewVisible(false); setPaymentParams(null); }} style={styles.webViewClose}>
-              <Ionicons name="close" size={22} color={Colors.primary} />
-            </TouchableOpacity>
-            <Text style={styles.webViewTitle}>결제하기</Text>
-            <View style={{ width: 36 }} />
-          </View>
-          {paymentParams && (
-            <WebView
-              source={{ html: buildTossHtml({ clientKey: TOSS_CLIENT_KEY, orderId: paymentParams.orderId, orderName: paymentParams.orderName, amount: paymentParams.amount, customerName: memberName }) }}
-              onMessage={e => handleWebViewMessage(e.nativeEvent.data)}
-              onNavigationStateChange={e => handleNavigationChange(e.url)}
-              javaScriptEnabled
-              domStorageEnabled
-              startInLoadingState
-              renderLoading={() => <View style={styles.webViewLoading}><ActivityIndicator size="large" color={Colors.primary} /></View>}
-            />
-          )}
-        </View>
-      </Modal>
     </View>
   );
 }
