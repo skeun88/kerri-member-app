@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { initBranch } from '../lib/branch';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -12,17 +11,6 @@ export default function RootLayout() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const segments = useSegments();
-
-
-  // Branch.io 딥링크 초기화 — 신규 설치 후 자동 회원 연결
-  useEffect(() => {
-    let unsub: any;
-    initBranch((memberName) => {
-      // 연결 완료 알림 (선택)
-      console.log('Branch 연결 완료:', memberName);
-    }).then(fn => { unsub = fn; });
-    return () => { unsub?.(); };
-  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
