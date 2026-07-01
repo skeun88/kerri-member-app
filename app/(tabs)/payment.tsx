@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
   pkgPrice: { fontSize: 16, fontWeight: '800', color: Colors.primary },
   empty: { alignItems: 'center', paddingVertical: 32, gap: 8 },
   emptyText: { fontSize: 14, color: Colors.mutedFg },
-  confirmingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  confirmingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   confirmingBox: { backgroundColor: Colors.white, borderRadius: 16, padding: 32, alignItems: 'center', gap: 16 },
   confirmingText: { fontSize: 15, fontWeight: '700', color: Colors.primary },
   webViewContainer: { flex: 1, backgroundColor: Colors.white },
