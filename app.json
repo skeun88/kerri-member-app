@@ -2,7 +2,7 @@
   "expo": {
     "name": "KERRI Member",
     "slug": "kerri-member",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,7 +20,8 @@
       }
     },
     "android": {
-      "package": "com.kerri.memberapp"
+      "package": "com.kerri.memberapp",
+      "versionCode": 6
     },
     "web": {
       "favicon": "./assets/favicon.png"
