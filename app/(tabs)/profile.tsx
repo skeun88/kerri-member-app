@@ -38,20 +38,22 @@ export default function ProfileScreen() {
     setProfile(mem);
     setEditName(mem.name);
 
-    // 출석 기록 (최근 8회)
+    // 출석 기록 (최근 8회) — member_id 필터 추가로 본인 출석만 조회
     const { data: lm } = await supabase.from('lesson_members').select('lesson_id').eq('member_id', mem.id);
     const lessonIds = (lm ?? []).map((l: any) => l.lesson_id);
     if (lessonIds.length > 0) {
       const { data: lessons } = await supabase.from('lessons').select('id, date')
         .in('id', lessonIds).order('date', { ascending: false }).limit(8);
       setTotalLessons(lessonIds.length);
+      // member_id 필터 필수 — 없으면 같은 레슨의 다른 회원 출석도 카운트됨
       const { data: att } = await supabase.from('attendance')
-        .select('lesson_id, status').in('lesson_id', lessonIds);
+        .select('lesson_id, status')
+        .in('lesson_id', lessonIds)
+        .eq('member_id', mem.id);
       const attendedIds = new Set((att ?? []).filter((a: any) => a.status === '출석').map((a: any) => a.lesson_id));
       setAttendedLessons(attendedIds.size);
       const dots = (lessons ?? []).map(l => attendedIds.has(l.id));
       setAttendanceDots(dots);
-
     }
   }
 
@@ -59,11 +61,23 @@ export default function ProfileScreen() {
 
   async function handleSaveName() {
     if (!profile) return;
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      Alert.alert('입력 오류', '이름을 입력해주세요.');
+      return;
+    }
     setSaving(true);
-    await supabase.from('members').update({ name: editName }).eq('id', profile.id);
-    setProfile(prev => prev ? { ...prev, name: editName } : prev);
-    setSaving(false);
-    setEditModal(false);
+    try {
+      const { error } = await supabase.from('members').update({ name: trimmed }).eq('id', profile.id);
+      if (error) throw error;
+      setProfile(prev => prev ? { ...prev, name: trimmed } : prev);
+      setEditName(trimmed);
+      setEditModal(false);
+    } catch (e: any) {
+      Alert.alert('저장 실패', e.message || '이름 변경에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleSignOut() {
