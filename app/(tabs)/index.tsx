@@ -57,19 +57,35 @@ export default function HomeScreen() {
   async function handleLinkInviteCode() {
     if (!inviteCode.trim()) return;
     setLinkingCode(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLinkingCode(false); return; }
-    const { data: found } = await supabase
-      .from('members').select('*')
-      .eq('invite_code', inviteCode.trim().toUpperCase()).maybeSingle();
-    if (!found) {
-      Alert.alert('코드 오류', '올바른 초대 코드를 입력해주세요.');
-      setLinkingCode(false); return;
+    try {
+      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+      const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+      const code = inviteCode.trim().toUpperCase();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-invite-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ invite_code: code }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        Alert.alert('코드 오류', '올바른 초대 코드를 입력해주세요.');
+        return;
+      }
+      // 세션 교체
+      if (data.session) {
+        await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+      }
+      Alert.alert('연결 완료! 🎾', `${data.member_name ?? ''}님, 코치와 연결됐어요!`);
+      setInviteCode('');
+      await loadData();
+    } catch (e) {
+      Alert.alert('오류', '네트워크 오류가 발생했습니다.');
+    } finally {
+      setLinkingCode(false);
     }
-    await supabase.from('members').update({ auth_user_id: user.id }).eq('id', found.id);
-    setLinkingCode(false); setInviteCode('');
-    await loadData();
-    Alert.alert('연결 완료! 🎾', `${found.name}님, 코치와 연결됐어요!`);
   }
 
   async function loadData() {
