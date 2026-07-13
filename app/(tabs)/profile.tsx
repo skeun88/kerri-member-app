@@ -71,27 +71,12 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
-      // RLS: 회원은 직접 UPDATE 권한이 없으므로 coach_id 기준 우회 시도
-      // auth_user_id 또는 email 기준으로 update
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('로그인 필요');
-
-      // email 기준으로 update (members_self_update_name 정책 또는 coaches own members 정책 커버)
+      // members_self_update RLS 정책으로 auth_user_id/email 기준 UPDATE 가능
       const { error } = await supabase
         .from('members')
         .update({ name: trimmed })
-        .eq('id', profile.id)
-        .select();
-
-      if (error) {
-        // RLS 차단 시 auth_user_id 기준 재시도
-        const { error: error2 } = await supabase
-          .from('members')
-          .update({ name: trimmed })
-          .or(`auth_user_id.eq.${user.id},email.eq.${user.email}`);
-        if (error2) throw error2;
-      }
-
+        .eq('id', profile.id);
+      if (error) throw error;
       setProfile(prev => prev ? { ...prev, name: trimmed } : prev);
       setEditName(trimmed);
       setEditModal(false);
