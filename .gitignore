@@ -41,3 +41,4 @@ yarn-error.*
 !ios/Podfile.properties.json
 /android
 .env
+google-service-account.json
