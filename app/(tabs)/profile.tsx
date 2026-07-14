@@ -33,12 +33,20 @@ export default function ProfileScreen() {
     if (!user) return;
     setEmail(user.email ?? '');
 
-    // auth_user_id 기준으로 먼저 조회 (RLS 통과 보장)
-    // syntheticEmail(invite_xxx@kerri.app)과 members.email이 다를 수 있어서
-    // email 기준 조회는 RLS UPDATE를 통과 못 할 수 있음
-    const { data: memById } = await supabase.from('members').select('*')
+    // auth_user_id 기준으로 먼저 조회
+    let { data: mem } = await supabase.from('members').select('*')
       .eq('auth_user_id', user.id).maybeSingle();
-    const mem = memById;
+
+    // auth_user_id로 못 찾으면 user_metadata의 member_id로 fallback
+    // (verify-invite-code가 user_metadata: { member_id }를 세팅함)
+    if (!mem) {
+      const memberId = user.user_metadata?.member_id;
+      if (memberId) {
+        const { data: memByMeta } = await supabase.from('members').select('*')
+          .eq('id', memberId).maybeSingle();
+        mem = memByMeta;
+      }
+    }
     if (!mem) return;
     setProfile(mem);
     setEditName(mem.name);
