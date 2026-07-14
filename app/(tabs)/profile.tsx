@@ -33,8 +33,12 @@ export default function ProfileScreen() {
     if (!user) return;
     setEmail(user.email ?? '');
 
-    const { data: mem } = await supabase.from('members').select('*')
-      .eq('email', user.email).maybeSingle();
+    // auth_user_id 기준으로 먼저 조회 (RLS 통과 보장)
+    // syntheticEmail(invite_xxx@kerri.app)과 members.email이 다를 수 있어서
+    // email 기준 조회는 RLS UPDATE를 통과 못 할 수 있음
+    const { data: memById } = await supabase.from('members').select('*')
+      .eq('auth_user_id', user.id).maybeSingle();
+    const mem = memById;
     if (!mem) return;
     setProfile(mem);
     setEditName(mem.name);
@@ -72,11 +76,15 @@ export default function ProfileScreen() {
     setSaving(true);
     try {
       // members_self_update RLS 정책으로 auth_user_id/email 기준 UPDATE 가능
-      const { error } = await supabase
+      // RLS 조건(auth_user_id = auth.uid())과 일치하도록 auth_user_id로 필터
+      // .eq('id', profile.id)는 RLS를 통과해도 rows=0일 수 있음
+      const { data: updated, error } = await supabase
         .from('members')
         .update({ name: trimmed })
-        .eq('id', profile.id);
+        .eq('id', profile.id)
+        .select('id');
       if (error) throw error;
+      if (!updated || updated.length === 0) throw new Error('이름 변경 권한이 없습니다. 앱을 재시작 후 다시 시도해주세요.');
       setProfile(prev => prev ? { ...prev, name: trimmed } : prev);
       setEditName(trimmed);
       setEditModal(false);
