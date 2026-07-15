@@ -38,6 +38,12 @@
         "projectId": "7341ba53-a81c-4e21-b4b3-a25cad0c9dd4"
       }
     },
-    "owner": "skeun-2"
+    "owner": "skeun-2",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7341ba53-a81c-4e21-b4b3-a25cad0c9dd4"
+    }
   }
 }
