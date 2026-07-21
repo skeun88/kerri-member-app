@@ -31,10 +31,12 @@ export default function RootLayout() {
     const seg1 = segments[1] as string | undefined;
     const inAuth = seg0 === '(auth)';
     const inOnboarding = seg0 === '(auth)' && seg1 === 'onboarding';
+    // QR 코드로 진입하는 코치 초대 화면 — 비로그인 허용
+    const inQrOnboarding = seg0 === 'qr-onboarding';
 
     if (!session) {
-      // 미로그인 → 로그인 화면
-      if (!inAuth) router.replace('/(auth)/login');
+      // 미로그인 → 로그인 화면 (QR 온보딩 경로 제외)
+      if (!inAuth && !inQrOnboarding) router.replace('/(auth)/login');
       return;
     }
 
@@ -85,6 +87,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="qr-onboarding" />
       </Stack>
     </GestureHandlerRootView>
   );

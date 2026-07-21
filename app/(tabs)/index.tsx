@@ -296,7 +296,7 @@ export default function HomeScreen() {
               <Text style={styles.qrModalSub}>지인에게 이 QR을 공유해서{`\n`}코치를 소개해보세요!</Text>
               <View style={styles.qrModalBox}>
                 <QRCode
-                  value={`kerri://join?coach_id=${member.coach_id}`}
+                  value={`kerri-member://qr-onboarding?coach_id=${member.coach_id}`}
                   size={200}
                   color="#D2755A"
                   backgroundColor="#fff"
@@ -307,7 +307,7 @@ export default function HomeScreen() {
                 onPress={async () => {
                   try {
                     await Share.share({
-                      message: `KERRI 앱으로 테니스 레슨을 관리해보세요! 코치 초대 링크: kerri://join?coach_id=${member.coach_id}`,
+                      message: `[KERRI 테니스] 코치를 소개해드려요!\n\n📱 KERRI 멤버 앱 설치:\nhttps://apps.apple.com/kr/app/kerri-member/id6783235236\n\n설치 후 앱에서 QR 스캔 또는 코치 초대 코드를 입력해 연결하세요.`,
                     });
                   } catch (e) {
                     // 공유 취소 시 무시
