@@ -44,17 +44,15 @@ export async function getMyMemberRow() {
     return { ...byId, auth_user_id: user.id };
   }
 
-  // 3순위: 이메일 매칭 → auth_user_id 자동 저장
-  if (user.email) {
-    const { data: byEmail } = await supabase
+  // 3순위: SECURITY DEFINER RPC로 이메일 매칭 → auth_user_id 자동 링크 (RLS 우회)
+  const { data: linkedId } = await supabase.rpc('get_my_member_id_by_email');
+  if (linkedId) {
+    const { data: linked } = await supabase
       .from('members')
       .select('*')
-      .ilike('email', user.email)
+      .eq('id', linkedId)
       .maybeSingle();
-    if (byEmail) {
-      await supabase.from('members').update({ auth_user_id: user.id }).eq('id', byEmail.id);
-      return { ...byEmail, auth_user_id: user.id };
-    }
+    if (linked) return linked;
   }
 
   return null;
