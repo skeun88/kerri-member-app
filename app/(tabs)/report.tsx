@@ -4,11 +4,12 @@ import {
   RefreshControl, ActivityIndicator, Modal, Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors } from '../../lib/theme';
 import {
-  getMyCreditInfo, unlockReport, chargeCredit,
+  getMyCreditInfo, unlockReport,
   CHARGE_OPTIONS, REPORT_CREDIT_COST, CreditInfo,
 } from '../../lib/reportCredits';
 
@@ -43,25 +44,17 @@ function ChargeModal({
   visible,
   creditInfo,
   onClose,
-  onCharged,
 }: {
   visible: boolean;
   creditInfo: CreditInfo;
   onClose: () => void;
-  onCharged: (newBalance: number) => void;
 }) {
-  const [charging, setCharging] = useState(false);
+  const router = useRouter();
   const [selectedAmount, setSelectedAmount] = useState(10000);
 
-  const handleCharge = async () => {
-    setCharging(true);
-    const result = await chargeCredit(selectedAmount);
-    setCharging(false);
-    if (result.success && result.balance !== undefined) {
-      onCharged(result.balance);
-    } else {
-      Alert.alert('오류', result.error || '충전 중 오류가 발생했습니다.');
-    }
+  const handleCharge = () => {
+    onClose();
+    router.push({ pathname: '/credit-charge', params: { amount: String(selectedAmount) } });
   };
 
   return (
@@ -76,7 +69,7 @@ function ChargeModal({
           </View>
 
           <Text style={cs.sheetTitle}>크레딧 충전</Text>
-          <Text style={cs.sheetSub}>리포트 1건당 {REPORT_CREDIT_COST.toLocaleString()}원 · 만원 단위 충전</Text>
+          <Text style={cs.sheetSub}>리포트 1건당 {REPORT_CREDIT_COST.toLocaleString()}원</Text>
 
           <View style={cs.optionList}>
             {CHARGE_OPTIONS.map((opt) => (
@@ -93,15 +86,9 @@ function ChargeModal({
             ))}
           </View>
 
-          <TouchableOpacity
-            style={[cs.chargeBtn, charging && cs.chargeBtnDisabled]}
-            onPress={handleCharge}
-            disabled={charging}
-          >
-            {charging
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={cs.chargeBtnText}>{selectedAmount.toLocaleString()}원 충전하기</Text>
-            }
+          <TouchableOpacity style={cs.chargeBtn} onPress={handleCharge}>
+            <Ionicons name="card-outline" size={20} color="#fff" />
+            <Text style={cs.chargeBtnText}>카드로 {selectedAmount.toLocaleString()}원 충전하기</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={cs.cancelBtn} onPress={onClose}>
@@ -114,6 +101,8 @@ function ChargeModal({
 }
 
 export default function ReportScreen() {
+  const router = useRouter();
+  const { charged } = useLocalSearchParams<{ charged?: string }>();
   const [reports, setReports] = useState<MemberReport[]>([]);
   const [creditInfo, setCreditInfo] = useState<CreditInfo>({
     balance: 0, total_charged: 0, total_used: 0, free_report_used: false,
@@ -186,29 +175,29 @@ export default function ReportScreen() {
     }
   }
 
-  /** 충전 완료 후 자동으로 해당 리포트 다시 열기 */
-  async function handleCharged(newBalance: number) {
+  // credit-charge 화면에서 돌아왔을 때 잔액 갱신 + 대기 리포트 열기
+  useEffect(() => {
+    if (!charged) return;
+    const newBalance = parseInt(charged, 10);
     setCreditInfo(prev => ({ ...prev, balance: newBalance }));
-    setShowChargeModal(false);
-
     if (pendingUnlockId) {
       const targetId = pendingUnlockId;
       setPendingUnlockId(null);
-
-      setUnlockingId(targetId);
-      const result = await unlockReport(targetId);
-      setUnlockingId(null);
-
-      if (result.success) {
-        const credit = await getMyCreditInfo();
-        setCreditInfo(credit);
-        setReports(prev =>
-          prev.map(r => r.id === targetId ? { ...r, credit_unlocked: true, is_read: true } : r)
-        );
-        setExpandedId(targetId);
-      }
+      (async () => {
+        setUnlockingId(targetId);
+        const result = await unlockReport(targetId);
+        setUnlockingId(null);
+        if (result.success) {
+          const credit = await getMyCreditInfo();
+          setCreditInfo(credit);
+          setReports(prev =>
+            prev.map(r => r.id === targetId ? { ...r, credit_unlocked: true, is_read: true } : r)
+          );
+          setExpandedId(targetId);
+        }
+      })();
     }
-  }
+  }, [charged]);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -241,7 +230,6 @@ export default function ReportScreen() {
         visible={showChargeModal}
         creditInfo={creditInfo}
         onClose={() => { setShowChargeModal(false); setPendingUnlockId(null); }}
-        onCharged={handleCharged}
       />
 
       {/* 헤더 */}
@@ -449,28 +437,30 @@ export default function ReportScreen() {
 
 // 충전 모달 스타일
 const cs = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
-  handle: { width: 40, height: 4, backgroundColor: '#e0e0e0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#EEF4FF', borderRadius: 12, padding: 14, marginBottom: 20 },
-  balanceLabel: { fontSize: 13, color: '#888' },
-  balanceAmount: { fontSize: 20, fontWeight: '800', color: Colors.primary },
-  sheetTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a2e', marginBottom: 4 },
-  sheetSub: { fontSize: 13, color: '#888', marginBottom: 20 },
-  optionList: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 44 },
+  handle: { width: 44, height: 5, backgroundColor: '#e0e0e0', borderRadius: 3, alignSelf: 'center', marginBottom: 24 },
+  balanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#EEF4FF', borderRadius: 14, padding: 16, marginBottom: 24 },
+  balanceLabel: { fontSize: 15, color: '#666', fontWeight: '600' },
+  balanceAmount: { fontSize: 24, fontWeight: '800', color: Colors.primary },
+  sheetTitle: { fontSize: 24, fontWeight: '800', color: '#1a1a2e', marginBottom: 6 },
+  sheetSub: { fontSize: 15, color: '#888', marginBottom: 24 },
+  optionList: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 },
   optionCard: {
-    width: '47%', backgroundColor: '#f8f9fa', borderRadius: 12,
-    padding: 14, borderWidth: 2, borderColor: '#e9ecef', alignItems: 'center',
+    width: '47%', backgroundColor: '#f8f9fa', borderRadius: 14,
+    padding: 18, borderWidth: 2, borderColor: '#e9ecef', alignItems: 'center',
   },
   optionSelected: { borderColor: Colors.primary, backgroundColor: '#EEF4FF' },
-  optionAmount: { fontSize: 17, fontWeight: '800', color: '#333', marginBottom: 3 },
+  optionAmount: { fontSize: 20, fontWeight: '800', color: '#333', marginBottom: 4 },
   optionAmountSelected: { color: Colors.primary },
-  optionDesc: { fontSize: 12, color: '#888' },
-  chargeBtn: { backgroundColor: Colors.primary, borderRadius: 14, padding: 18, alignItems: 'center', marginBottom: 10 },
-  chargeBtnDisabled: { opacity: 0.7 },
-  chargeBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  cancelBtn: { alignItems: 'center', padding: 12 },
-  cancelBtnText: { color: '#888', fontSize: 14 },
+  optionDesc: { fontSize: 14, color: '#888' },
+  chargeBtn: {
+    backgroundColor: Colors.primary, borderRadius: 16, padding: 20,
+    alignItems: 'center', marginBottom: 12, flexDirection: 'row', justifyContent: 'center', gap: 8,
+  },
+  chargeBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  cancelBtn: { alignItems: 'center', padding: 14 },
+  cancelBtnText: { color: '#999', fontSize: 16 },
 });
 
 const styles = StyleSheet.create({
