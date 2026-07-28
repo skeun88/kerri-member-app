@@ -1,6 +1,6 @@
 import { supabase, getMyMemberRow } from './supabase';
 
-export const REPORT_CREDIT_COST = 1000;  // 리포트 1건당 1,000원
+export const REPORT_CREDIT_COST = 700;   // 리포트 1건당 700원
 export const MIN_CHARGE_AMOUNT = 10000;  // 최소 충전 단위 10,000원
 
 export interface CreditInfo {
@@ -76,8 +76,7 @@ export async function chargeCredit(amount: number): Promise<{ success: boolean; 
 
 /** 충전 금액 옵션 목록 */
 export const CHARGE_OPTIONS = [
-  { amount: 10000, label: '10,000원', reports: 10, description: '리포트 10건' },
-  { amount: 20000, label: '20,000원', reports: 20, description: '리포트 20건' },
-  { amount: 30000, label: '30,000원', reports: 30, description: '리포트 30건' },
-  { amount: 50000, label: '50,000원', reports: 50, description: '리포트 50건' },
+  { amount: 10000, label: '10,000원', reports: 14, description: '리포트 14건' },
+  { amount: 20000, label: '20,000원', reports: 28, description: '리포트 28건' },
+  { amount: 30000, label: '30,000원', reports: 42, description: '리포트 42건' },
 ];

@@ -388,33 +388,25 @@ export default function ScheduleScreen() {
       }
     }
 
-    // 레슨 (3개월 전부터) - lesson_members 인라인 조회로 RLS 이슈 방지
+    // 레슨 (3개월 전부터) - lesson_id 목록 조회 후 lessons 별도 쿼리
     const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     const threeMonthsAgoStr = toKSTDateStr(threeMonthsAgo);
-    const { data: lmRows, error: lmErr } = await supabase
+    const { data: lmRows } = await supabase
       .from('lesson_members')
-      .select('lesson_id, lesson:lessons(id, date, start_time, end_time, title, report, location)')
+      .select('lesson_id')
       .eq('member_id', mem.id);
-    if (lmRows && lmRows.length > 0) {
-      const lds = (lmRows ?? [])
-        .map((r: any) => r.lesson)
-        .filter((l: any) => l && l.date >= threeMonthsAgoStr)
-        .sort((a: any, b: any) => {
-          const dateDiff = b.date.localeCompare(a.date);
-          return dateDiff !== 0 ? dateDiff : b.start_time.localeCompare(a.start_time);
-        });
-      setLessons(lds);
+    const ids = (lmRows ?? []).map((r: any) => r.lesson_id).filter(Boolean);
+    if (ids.length > 0) {
+      const { data: ld } = await supabase
+        .from('lessons')
+        .select('id, date, start_time, end_time, title, report, location')
+        .in('id', ids)
+        .gte('date', threeMonthsAgoStr)
+        .order('date', { ascending: false })
+        .order('start_time', { ascending: false });
+      setLessons(ld ?? []);
     } else {
-      // Fallback: lesson_ids 방식으로 재시도
-      const ids = (lmRows ?? []).map((r: any) => r.lesson_id).filter(Boolean);
-      if (ids.length > 0) {
-        const { data: ld } = await supabase.from('lessons').select('*')
-          .in('id', ids).gte('date', threeMonthsAgoStr)
-          .order('date', { ascending: false }).order('start_time', { ascending: false });
-        setLessons(ld ?? []);
-      } else {
-        setLessons([]);
-      }
+      setLessons([]);
     }
 
     // 결제
