@@ -4,6 +4,7 @@ import {
   RefreshControl, Alert, Modal, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
@@ -12,7 +13,7 @@ type MainTab = 'schedule' | 'makeup' | 'payment' | 'report';
 
 interface Lesson {
   id: string; date: string; start_time: string; end_time: string;
-  title: string; report?: string; location?: string;
+  title: string; notes?: string; location?: string;
 }
 interface Payment {
   id: string; amount: number; paid_amount: number; due_date: string;
@@ -365,10 +366,20 @@ export default function ScheduleScreen() {
   const [pkgDuration, setPkgDuration] = useState(60);
   const [packageTitle, setPackageTitle] = useState('');
 
+  const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
   const today = todayKST();
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(dateParam ?? today);
   const now = new Date();
-  const [calMonth, setCalMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const initDate = dateParam ? new Date(dateParam + 'T00:00:00') : now;
+  const [calMonth, setCalMonth] = useState({ year: initDate.getFullYear(), month: initDate.getMonth() });
+
+  useEffect(() => {
+    if (dateParam) {
+      setSelectedDate(dateParam);
+      const d = new Date(dateParam + 'T00:00:00');
+      setCalMonth({ year: d.getFullYear(), month: d.getMonth() });
+    }
+  }, [dateParam]);
 
   // 레슨 상세 모달
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
@@ -399,7 +410,7 @@ export default function ScheduleScreen() {
     if (ids.length > 0) {
       const { data: ld } = await supabase
         .from('lessons')
-        .select('id, date, start_time, end_time, title, report, location')
+        .select('id, date, start_time, end_time, title, notes, location')
         .in('id', ids)
         .gte('date', threeMonthsAgoStr)
         .order('date', { ascending: false })
@@ -686,8 +697,8 @@ export default function ScheduleScreen() {
                   <View style={s.reportBody}>
                     <Text style={s.reportTitle}>{l.title}</Text>
                     <Text style={s.reportTime}>{l.start_time.slice(0,5)} ~ {l.end_time.slice(0,5)}</Text>
-                    {l.report ? (
-                      <Text style={s.reportPreview} numberOfLines={1}>📋 {l.report}</Text>
+                    {l.notes ? (
+                      <Text style={s.reportPreview} numberOfLines={1}>📋 {l.notes}</Text>
                     ) : (
                       <Text style={[s.reportPreview, { color: Colors.placeholder }]}>리포트 없음</Text>
                     )}
@@ -730,7 +741,7 @@ export default function ScheduleScreen() {
                     <Text style={s.reportBoxTitle}>코치 리포트</Text>
                   </View>
                   <Text style={s.reportBoxContent}>
-                    {selectedLesson.report || '아직 리포트가 작성되지 않았어요.\n다음 레슨 후 코치가 작성해드릴게요 🎾'}
+                    {selectedLesson.notes || '아직 리포트가 작성되지 않았어요.\n다음 레슨 후 코치가 작성해드릴게요 🎾'}
                   </Text>
                 </View>
               </>
@@ -763,7 +774,7 @@ function LessonCard({ lesson, today, onPress }: { lesson: Lesson; today: string;
           {isPast && <View style={[s.todayBadge, { backgroundColor: Colors.mutedBg }]}><Text style={[s.todayText, { color: Colors.mutedFg }]}>완료</Text></View>}
         </View>
         <Text style={s.lessonTime}>{lesson.start_time.slice(0,5)} ~ {lesson.end_time.slice(0,5)}</Text>
-        {lesson.report && <Text style={[s.lessonTime, { color: Colors.primary, marginTop:3 }]} numberOfLines={1}>📋 {lesson.report}</Text>}
+        {lesson.notes && <Text style={[s.lessonTime, { color: Colors.primary, marginTop:3 }]} numberOfLines={1}>📋 {lesson.notes}</Text>}
       </View>
       <Ionicons name="chevron-forward" size={15} color={Colors.placeholder} />
     </TouchableOpacity>

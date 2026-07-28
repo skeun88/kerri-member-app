@@ -431,7 +431,8 @@ export default function HomeScreen() {
               const d = new Date(lesson.date + 'T00:00:00');
               const isToday = lesson.date === new Date().toISOString().split('T')[0];
               return (
-                <View key={lesson.id} style={[styles.lessonCard, isToday && styles.lessonCardToday]}>
+                <TouchableOpacity key={lesson.id} style={[styles.lessonCard, isToday && styles.lessonCardToday]}
+                  onPress={() => router.push(`/(tabs)/schedule?date=${lesson.date}`)}>
                   <View style={styles.lessonDateBox}>
                     <Text style={styles.lessonMon}>{d.toLocaleDateString('ko-KR', { month: 'short' })}</Text>
                     <Text style={styles.lessonDay}>{d.getDate()}</Text>
@@ -443,7 +444,7 @@ export default function HomeScreen() {
                     {isToday && <View style={styles.todayBadge}><Text style={styles.todayBadgeText}>오늘</Text></View>}
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={Colors.placeholder} />
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
