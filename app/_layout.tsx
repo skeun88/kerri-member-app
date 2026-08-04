@@ -10,6 +10,8 @@ import { supabase, getMyMemberRow } from '../lib/supabase';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '../lib/theme';
+import { registerMemberPushToken } from '../lib/notifications';
+import { configureRevenueCat } from '../lib/revenueCat';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -24,10 +26,12 @@ export default function RootLayout() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session?.user) configureRevenueCat(session.user.id);
       setLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session);
+      if (session?.user) configureRevenueCat(session.user.id);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -64,6 +68,7 @@ export default function RootLayout() {
         setIsNavigationReady(true);
       } else {
         checkOnboarding();
+        registerMemberPushToken().catch(() => {});
       }
     }
   }, [session, loading, segments]);
