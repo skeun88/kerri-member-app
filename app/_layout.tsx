@@ -76,6 +76,13 @@ export default function RootLayout() {
   async function checkOnboarding() {
     setOnboardingChecked(true);
     try {
+      // Verify auth user still exists on server (getSession() only checks local cache)
+      const { data: { user: liveUser } } = await supabase.auth.getUser();
+      if (!liveUser) {
+        await supabase.auth.signOut();
+        return; // onAuthStateChange fires with null → routes to login
+      }
+
       const member = await getMyMemberRow();
       if (!member) {
         if (segments[0] === '(auth)') {

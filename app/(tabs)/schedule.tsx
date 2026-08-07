@@ -152,7 +152,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     const dayBusy = busySlots.filter(s => s.date === dateStr);
     // 가용 시간 범위 (없으면 6~22)
     const rangeStart = availability ? tMin(availability.available_start) : 6 * 60;
-    const rangeEnd = availability ? tMin(availability.available_end) : 22 * 60;
+    const rangeEnd = availability ? tMin(availability.available_end) : 23 * 60;
     const slots: string[] = [];
     for (let start = rangeStart; start + lessonDuration <= rangeEnd; start += 30) {
       const end = start + lessonDuration;
@@ -224,7 +224,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
       {availabilityLoaded && !availability && !loadingSlots && (
         <View style={s.noAvailBanner}>
           <Ionicons name="information-circle-outline" size={18} color={Colors.warning} />
-          <Text style={s.noAvailText}>코치가 아직 가용시간을 설정하지 않았어요. 06:00~22:00 기준으로 표시돼요.</Text>
+          <Text style={s.noAvailText}>코치가 아직 가용시간을 설정하지 않았어요. 06:00~23:00 기준으로 표시돼요.</Text>
         </View>
       )}
 
