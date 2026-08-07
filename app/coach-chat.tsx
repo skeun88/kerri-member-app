@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../lib/supabase';
 import { Colors, Radius, Shadow } from '../lib/theme';
+import { notifyCoachMessage } from '../lib/notifications';
 
 interface Msg {
   id: string;
@@ -99,7 +100,15 @@ export default function CoachChatScreen() {
     setSending(true);
     const { error } = await supabase.from('messages').insert({ coach_id: coachId, member_id: memberId, sender_type: 'member', content: text });
     setSending(false);
-    if (error) Alert.alert('전송 실패', error.message);
+    if (error) {
+      Alert.alert('전송 실패', error.message);
+    } else {
+      // PN-03: 코치에게 회원 메시지 알림
+      const member = await getMyMemberRow();
+      if (member && coachId) {
+        notifyCoachMessage(coachId, member.name ?? '회원').catch(() => {});
+      }
+    }
   }
 
   function renderMsg({ item, index }: { item: Msg; index: number }) {
