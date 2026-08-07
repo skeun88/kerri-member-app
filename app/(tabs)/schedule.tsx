@@ -48,10 +48,18 @@ interface LessonRequest {
   id: string; requested_date: string; start_time: string; end_time: string; status: string; message?: string; reject_message?: string | null;
 }
 
+interface CoachAvailability {
+  available_days: number[];
+  available_start: string; // 'HH:MM:SS'
+  available_end: string;
+}
+
 function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|null; coachId: string|null; lessonDuration: number }) {
   const now = new Date();
   const [calMonth, setCalMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [busySlots, setBusySlots] = useState<{ date: string; startMin: number; endMin: number }[]>([]);
+  const [availability, setAvailability] = useState<CoachAvailability | null>(null);
+  const [availabilityLoaded, setAvailabilityLoaded] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [myRequests, setMyRequests] = useState<LessonRequest[]>([]);
@@ -98,13 +106,19 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     const firstDay = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-01`;
     const lastDay = new Date(calMonth.year, calMonth.month+1, 0);
     const lastDayStr = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
-    const { data } = await supabase.from('lessons').select('date, start_time, end_time')
-      .eq('coach_id', coachId).gte('date', firstDay).lte('date', lastDayStr);
-    setBusySlots((data ?? []).map((l: any) => ({
+    const [{ data: lessons }, { data: avail }] = await Promise.all([
+      supabase.from('lessons').select('date, start_time, end_time')
+        .eq('coach_id', coachId).gte('date', firstDay).lte('date', lastDayStr),
+      supabase.from('coach_availability').select('available_days, available_start, available_end')
+        .eq('coach_id', coachId).maybeSingle(),
+    ]);
+    setBusySlots((lessons ?? []).map((l: any) => ({
       date: l.date,
       startMin: tMin(l.start_time),
       endMin: tMin(l.end_time),
     })));
+    setAvailability(avail ?? null);
+    setAvailabilityLoaded(true);
     setLoadingSlots(false);
   }
 
@@ -125,23 +139,44 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
   function handleDateSelect(dateStr: string) {
     if (dateStr < todayStr) return;
+    // 가용 요일 체크
+    if (availability) {
+      const dow = new Date(dateStr + 'T00:00:00').getDay();
+      if (!availability.available_days.includes(dow)) {
+        setSelectedDate(dateStr);
+        setAvailableSlots([]);
+        return;
+      }
+    }
     setSelectedDate(dateStr);
     const dayBusy = busySlots.filter(s => s.date === dateStr);
+    // 가용 시간 범위 (없으면 6~22)
+    const rangeStart = availability ? tMin(availability.available_start) : 6 * 60;
+    const rangeEnd = availability ? tMin(availability.available_end) : 22 * 60;
     const slots: string[] = [];
-    for (let h = 6; h < 22; h++) {
-      for (const m of [0, 30]) {
-        const start = h * 60 + m;
-        const end = start + lessonDuration;
-        if (end > 22 * 60) continue;
-        const free = !dayBusy.some(b => start < b.endMin && end > b.startMin);
-        if (free) slots.push(mStr(start));
-      }
+    for (let start = rangeStart; start + lessonDuration <= rangeEnd; start += 30) {
+      const end = start + lessonDuration;
+      const free = !dayBusy.some(b => start < b.endMin && end > b.startMin);
+      if (free) slots.push(mStr(start));
     }
     setAvailableSlots(slots);
   }
 
+  function isPendingSlot(dateStr: string, slotTime: string) {
+    return myRequests.some(r =>
+      r.requested_date === dateStr &&
+      r.start_time.slice(0, 5) === slotTime &&
+      r.status === 'pending'
+    );
+  }
+
   async function submitRequest() {
     if (!bookingSlot || !memberId || !coachId || sending) return;
+    if (isPendingSlot(selectedDate!, bookingSlot)) {
+      Alert.alert('이미 요청됨', '해당 시간에 이미 예약 요청이 있어요. 코치 확인을 기다려주세요.');
+      setBookingModal(false);
+      return;
+    }
     setSending(true);
     const startMin = tMin(bookingSlot + ':00');
     const endMin = startMin + lessonDuration;
@@ -186,6 +221,13 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
       {loadingSlots && <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} />}
 
+      {availabilityLoaded && !availability && !loadingSlots && (
+        <View style={s.noAvailBanner}>
+          <Ionicons name="information-circle-outline" size={18} color={Colors.warning} />
+          <Text style={s.noAvailText}>코치가 아직 가용시간을 설정하지 않았어요. 06:00~22:00 기준으로 표시돼요.</Text>
+        </View>
+      )}
+
       {selectedDate && !loadingSlots && (
         <View style={s.section}>
           <Text style={s.sectionTitle}>
@@ -194,18 +236,33 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
           {availableSlots.length === 0 ? (
             <View style={s.empty}>
               <Ionicons name="time-outline" size={32} color={Colors.iconMuted} />
-              <Text style={s.emptyText}>이 날은 빈 시간이 없어요</Text>
+              <Text style={s.emptyText}>
+                {availability && !availability.available_days.includes(new Date(selectedDate+'T00:00:00').getDay())
+                  ? '코치가 이 요일에는 레슨을 진행하지 않아요'
+                  : '이 날은 신청 가능한 시간이 없어요'}
+              </Text>
             </View>
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {availableSlots.map(slot => (
-                <TouchableOpacity key={slot}
-                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.primary + '18', borderWidth: 1, borderColor: Colors.primary }}
-                  onPress={() => { setBookingSlot(slot); setBookingModal(true); }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.primary }}>{slot}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.primary + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
-                </TouchableOpacity>
-              ))}
+              {availableSlots.map(slot => {
+                const pending = selectedDate ? isPendingSlot(selectedDate, slot) : false;
+                return (
+                  <TouchableOpacity key={slot}
+                    style={{
+                      paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md,
+                      backgroundColor: pending ? Colors.mutedBg : Colors.primary + '18',
+                      borderWidth: 1,
+                      borderColor: pending ? Colors.border : Colors.primary,
+                      opacity: pending ? 0.7 : 1,
+                    }}
+                    onPress={() => { setBookingSlot(slot); setBookingModal(true); }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: pending ? Colors.mutedFg : Colors.primary }}>{slot}</Text>
+                    <Text style={{ fontSize: 12, color: pending ? Colors.placeholder : Colors.primary + 'aa', marginTop: 1 }}>
+                      {pending ? '요청 중' : `${lessonDuration}분`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
         </View>
@@ -790,6 +847,9 @@ const s = StyleSheet.create({
   tabTextActive: { color: '#fff' },
   tabBadge: { backgroundColor: Colors.destructive, borderRadius: 8, width: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
   tabBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+
+  noAvailBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginHorizontal: 16, marginTop: 12, backgroundColor: Colors.warning + '18', borderRadius: Radius.md, padding: 12, borderWidth: 1, borderColor: Colors.warning + '40' },
+  noAvailText: { flex: 1, fontSize: 13, color: Colors.foreground, lineHeight: 18 },
 
   progressCard: { backgroundColor: '#fff', borderRadius: Radius.xl, margin: 16, marginBottom: 0, padding: 16, ...Shadow.sm },
   progressTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },

@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Alert, Modal, TextInput, ActivityIndicator,
+  RefreshControl, Alert, Modal, TextInput, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
@@ -19,6 +20,8 @@ const LEVEL_ORDER = ['입문','초급','중급','상급','선수'];
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [email, setEmail] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [totalLessons, setTotalLessons] = useState(0);
   const [attendedLessons, setAttendedLessons] = useState(0);
@@ -50,6 +53,7 @@ export default function ProfileScreen() {
     if (!mem) return;
     setProfile(mem);
     setEditName(mem.name);
+    setPhotoUrl((mem as any).photo_url ?? null);
 
     // 총 레슨 수: lesson_members 기준 (회원이 SELECT 가능한 RLS)
     const { data: lm } = await supabase.from('lesson_members').select('lesson_id').eq('member_id', mem.id);
@@ -103,6 +107,48 @@ export default function ProfileScreen() {
     }
   }
 
+  async function handlePhotoUpload() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('권한 필요', '갤러리 접근 권한이 필요합니다. 설정에서 허용해주세요.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    if (!profile) return;
+
+    setUploadingPhoto(true);
+    try {
+      const asset = result.assets[0];
+      const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const path = `member-${profile.id}.${ext}`;
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+      const { error: updateError } = await supabase
+        .from('members')
+        .update({ photo_url: publicUrl })
+        .eq('id', profile.id);
+      if (updateError) throw updateError;
+
+      setPhotoUrl(publicUrl + '?t=' + Date.now());
+    } catch (e: any) {
+      Alert.alert('업로드 실패', e.message || '사진 업로드에 실패했습니다.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   async function handleSignOut() {
     Alert.alert('로그아웃', '로그아웃 하시겠습니까?', [
       { text: '취소', style: 'cancel' },
@@ -128,11 +174,19 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.avatarRow}>
-            <TouchableOpacity onPress={() => setEditModal(true)}>
+            <TouchableOpacity onPress={handlePhotoUpload} disabled={uploadingPhoto}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initial}</Text>
+                {uploadingPhoto ? (
+                  <ActivityIndicator color={Colors.primary} />
+                ) : photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarText}>{initial}</Text>
+                )}
               </View>
-              <View style={styles.editIcon}><Ionicons name="pencil" size={12} color={Colors.white} /></View>
+              <View style={styles.editIcon}>
+                <Ionicons name={uploadingPhoto ? 'hourglass-outline' : 'camera'} size={12} color={Colors.white} />
+              </View>
             </TouchableOpacity>
             <View style={styles.heroInfo}>
               <Text style={styles.heroName}>{profile?.name ?? '회원'}</Text>
@@ -217,7 +271,8 @@ const styles = StyleSheet.create({
   heroTitle: { fontSize: 18, fontWeight: '700', color: Colors.white },
   logoutBtn: { padding: 4 },
   avatarRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16 },
-  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.white, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.white, justifyContent: 'center', alignItems: 'center', marginRight: 14, overflow: 'hidden' },
+  avatarImage: { width: 64, height: 64, borderRadius: 32 },
   avatarText: { fontSize: 26, fontWeight: '900', color: Colors.primary },
   editIcon: { position: 'absolute', bottom: 0, right: 10, backgroundColor: Colors.primary, borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' },
   heroInfo: { flex: 1 },

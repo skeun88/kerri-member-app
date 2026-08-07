@@ -2,7 +2,7 @@
   "expo": {
     "name": "KERRI Member",
     "slug": "kerri-member",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -30,7 +30,13 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "사진을 프로필로 사용하기 위해 갤러리 접근이 필요합니다."
+        }
+      ]
     ],
     "extra": {
       "router": {},
