@@ -68,7 +68,7 @@ export default function RootLayout() {
         setIsNavigationReady(true);
       } else {
         checkOnboarding();
-        registerMemberPushToken().catch(() => {});
+        registerMemberPushToken().catch(e => console.error('[PUSH] 등록 실패:', e));
       }
     }
   }, [session, loading, segments]);

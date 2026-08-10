@@ -125,7 +125,7 @@ export default function ReportScreen() {
     const [{ data: reportData }, credit] = await Promise.all([
       supabase
         .from('member_lesson_reports')
-        .select('*, lesson_plan:lesson_plan_id(transcript_summary)')
+        .select('*, lesson_plan:lesson_plans!lesson_plan_id(transcript_summary)')
         .eq('member_id', member.id)
         .order('created_at', { ascending: false })
         .limit(30),
@@ -362,7 +362,7 @@ export default function ReportScreen() {
                       <View style={styles.section}>
                         <View style={styles.sectionTitleRow}>
                           <Text style={styles.sectionIcon}>🏆</Text>
-                          <Text style={styles.sectionTitle}>오늘의 중요 성과</Text>
+                          <Text style={styles.sectionTitle}>오늘 잘한 점</Text>
                         </View>
                         {report.achievements.map((item, i) => (
                           <View key={i} style={styles.achievementRow}>
@@ -378,7 +378,7 @@ export default function ReportScreen() {
                       <View style={styles.section}>
                         <View style={styles.sectionTitleRow}>
                           <Text style={styles.sectionIcon}>💡</Text>
-                          <Text style={styles.sectionTitle}>개선 및 보완 포인트</Text>
+                          <Text style={styles.sectionTitle}>개선 포인트</Text>
                         </View>
                         {report.improvement_points.map((item, i) => (
                           <View key={i} style={styles.improveRow}>
@@ -394,7 +394,7 @@ export default function ReportScreen() {
                       <View style={styles.section}>
                         <View style={styles.sectionTitleRow}>
                           <Text style={styles.sectionIcon}>🎯</Text>
-                          <Text style={styles.sectionTitle}>맞춤 개인 연습 플랜</Text>
+                          <Text style={styles.sectionTitle}>개인 맞춤 연습 플랜</Text>
                         </View>
                         {report.practice_plan.map((item, i) => (
                           <View key={i} style={styles.practiceCard}>

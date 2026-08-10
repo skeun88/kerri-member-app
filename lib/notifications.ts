@@ -27,7 +27,10 @@ export async function registerMemberPushToken() {
     finalStatus = status;
   }
 
-  if (finalStatus !== 'granted') return;
+  if (finalStatus !== 'granted') {
+    console.error('[PUSH] 알림 권한 거부 또는 미허용. status:', finalStatus);
+    return;
+  }
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
@@ -37,19 +40,43 @@ export async function registerMemberPushToken() {
     });
   }
 
-  const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
-  const token = tokenResult.data;
-  if (!token) return;
+  let token: string | undefined;
+  try {
+    const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
+    token = tokenResult.data;
+  } catch (e) {
+    console.error('[PUSH] getExpoPushTokenAsync 실패. projectId:', EXPO_PROJECT_ID, '에러:', e);
+    return;
+  }
+
+  if (!token) {
+    console.error('[PUSH] 토큰 발급 실패 (빈 값)');
+    return;
+  }
+  console.log('[PUSH] 토큰 발급 성공:', token.slice(0, 30) + '...');
+
+  const { data: { user } } = await supabase.auth.getUser();
+  console.log('[PUSH] 현재 auth uid:', user?.id ?? 'null');
 
   const member = await getMyMemberRow();
-  if (!member) return;
+  if (!member) {
+    console.error('[PUSH] 회원 레코드 없음. auth uid:', user?.id ?? 'null');
+    return;
+  }
+  console.log('[PUSH] 회원 id:', member.id);
 
-  await supabase.from('member_push_tokens').upsert({
+  const { error } = await supabase.from('member_push_tokens').upsert({
     member_id: member.id,
     push_token: token,
     platform: Platform.OS as 'ios' | 'android',
     updated_at: new Date().toISOString(),
   }, { onConflict: 'member_id' });
+
+  if (error) {
+    console.error('[PUSH] upsert 실패:', error);
+  } else {
+    console.log('[PUSH] 토큰 등록 완료');
+  }
 }
 
 // PN-03: 회원 → 코치 메시지 알림
