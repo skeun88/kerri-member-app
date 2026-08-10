@@ -31,6 +31,7 @@ interface MemberReport {
   is_read: boolean;
   credit_unlocked: boolean;
   created_at: string;
+  lesson_plan?: { transcript_summary?: { lesson_flow?: string } } | null;
 }
 
 function formatDate(dateStr: string) {
@@ -108,6 +109,7 @@ export default function ReportScreen() {
     balance: 0, total_charged: 0, total_used: 0, free_report_used: false,
   });
   const [loading, setLoading] = useState(true);
+  const [expandedTranscriptId, setExpandedTranscriptId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
@@ -123,7 +125,7 @@ export default function ReportScreen() {
     const [{ data: reportData }, credit] = await Promise.all([
       supabase
         .from('member_lesson_reports')
-        .select('*')
+        .select('*, lesson_plan:lesson_plan_id(transcript_summary)')
         .eq('member_id', member.id)
         .order('created_at', { ascending: false })
         .limit(30),
@@ -423,6 +425,34 @@ export default function ReportScreen() {
                         ))}
                       </View>
                     )}
+
+                    {/* 5. 레슨 전체 내용 보기 */}
+                    {report.lesson_plan?.transcript_summary?.lesson_flow ? (
+                      <View style={styles.section}>
+                        <TouchableOpacity
+                          style={styles.sectionTitleRow}
+                          onPress={() => setExpandedTranscriptId(
+                            expandedTranscriptId === report.id ? null : report.id
+                          )}
+                          activeOpacity={0.7}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={styles.sectionIcon}>📝</Text>
+                            <Text style={styles.sectionTitle}>레슨 전체 내용 보기</Text>
+                          </View>
+                          <Ionicons
+                            name={expandedTranscriptId === report.id ? 'chevron-up' : 'chevron-down'}
+                            size={16}
+                            color={Colors.mutedFg}
+                          />
+                        </TouchableOpacity>
+                        {expandedTranscriptId === report.id && (
+                          <Text style={styles.transcriptText}>
+                            {report.lesson_plan.transcript_summary.lesson_flow}
+                          </Text>
+                        )}
+                      </View>
+                    ) : null}
                   </View>
                 )}
               </TouchableOpacity>
@@ -563,4 +593,5 @@ const styles = StyleSheet.create({
   tipBox: { backgroundColor: '#FFFBEB', borderRadius: 8, padding: 10, borderLeftWidth: 3, borderLeftColor: '#F59E0B' },
   tipLabel: { fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 },
   tipText: { fontSize: 13, color: '#78350F', lineHeight: 20 },
+  transcriptText: { fontSize: 13, color: Colors.foreground, lineHeight: 22, marginTop: 8 },
 });
