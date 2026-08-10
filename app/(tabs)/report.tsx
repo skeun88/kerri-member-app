@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Modal, Alert,
+  TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -31,6 +32,8 @@ interface MemberReport {
   is_read: boolean;
   credit_unlocked: boolean;
   created_at: string;
+  lesson_plan_id?: string;
+  lesson_plan?: { transcript_summary: any } | null;
 }
 
 function formatDate(dateStr: string) {
@@ -114,6 +117,18 @@ export default function ReportScreen() {
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [pendingUnlockId, setPendingUnlockId] = useState<string | null>(null);
   const [memberIdForRt, setMemberIdForRt] = useState<string | null>(null);
+  const [expandedTranscript, setExpandedTranscript] = useState<string | null>(null);
+
+  // 편집 모달
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editModalLabel, setEditModalLabel] = useState('');
+  const [editingValue, setEditingValue] = useState('');
+  const [editingTarget, setEditingTarget] = useState<{
+    reportId: string;
+    field: 'summary' | 'achievements' | 'improvement_points' | 'practice_plan';
+    practiceIndex?: number;
+  } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function loadData() {
     const member = await getMyMemberRow();
@@ -123,7 +138,7 @@ export default function ReportScreen() {
     const [{ data: reportData }, credit] = await Promise.all([
       supabase
         .from('member_lesson_reports')
-        .select('*')
+        .select('*, lesson_plan:lesson_plans!lesson_plan_id(transcript_summary)')
         .eq('member_id', member.id)
         .order('created_at', { ascending: false })
         .limit(30),
@@ -143,22 +158,59 @@ export default function ReportScreen() {
     setReports(prev => prev.map(r => r.id === reportId ? { ...r, is_read: true } : r));
   }
 
+  async function saveEdit(value: string) {
+    if (!editingTarget) return;
+    setSavingEdit(true);
+    const { reportId, field, practiceIndex } = editingTarget;
+    let updateData: any = {};
+
+    if (field === 'summary') {
+      updateData.summary = value;
+    } else if (field === 'achievements') {
+      updateData.achievements = value.split('\n').filter(s => s.trim());
+    } else if (field === 'improvement_points') {
+      updateData.improvement_points = value.split('\n').filter(s => s.trim());
+    } else if (field === 'practice_plan' && practiceIndex !== undefined) {
+      const report = reports.find(r => r.id === reportId);
+      if (!report) { setSavingEdit(false); return; }
+      updateData.practice_plan = report.practice_plan.map((item, i) =>
+        i === practiceIndex ? { ...item, description: value } : item
+      );
+    }
+
+    await supabase.from('member_lesson_reports').update(updateData).eq('id', reportId);
+
+    setReports(prev => prev.map(r => {
+      if (r.id !== reportId) return r;
+      if (field === 'summary') return { ...r, summary: value };
+      if (field === 'achievements') return { ...r, achievements: value.split('\n').filter(s => s.trim()) };
+      if (field === 'improvement_points') return { ...r, improvement_points: value.split('\n').filter(s => s.trim()) };
+      if (field === 'practice_plan' && practiceIndex !== undefined) {
+        return { ...r, practice_plan: r.practice_plan.map((item, i) =>
+          i === practiceIndex ? { ...item, description: value } : item
+        )};
+      }
+      return r;
+    }));
+
+    setSavingEdit(false);
+    setEditModalVisible(false);
+    setEditingTarget(null);
+  }
+
   /** 리포트 열람 — 잠금 해제 또는 이미 열람된 경우 바로 펼침 */
   async function handleOpen(report: MemberReport) {
-    // 이미 열람한 리포트 → 그냥 펼침
     if (report.credit_unlocked) {
       setExpandedId(prev => prev === report.id ? null : report.id);
       if (!report.is_read) markRead(report.id);
       return;
     }
 
-    // 잠금 해제 시도
     setUnlockingId(report.id);
     const result = await unlockReport(report.id);
     setUnlockingId(null);
 
     if (result.success) {
-      // 크레딧 잔액 업데이트
       const credit = await getMyCreditInfo();
       setCreditInfo(credit);
 
@@ -167,7 +219,6 @@ export default function ReportScreen() {
       );
       setExpandedId(report.id);
     } else if (result.reason === 'insufficient_credit') {
-      // 잔액 부족 → 충전 모달
       setPendingUnlockId(report.id);
       setShowChargeModal(true);
     } else {
@@ -175,7 +226,6 @@ export default function ReportScreen() {
     }
   }
 
-  // credit-charge 화면에서 돌아왔을 때 잔액 갱신 + 대기 리포트 열기
   useEffect(() => {
     if (!charged) return;
     const newBalance = parseInt(charged, 10);
@@ -201,7 +251,6 @@ export default function ReportScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
-  // Realtime: 새 리포트 도착 시 즉시 반영
   useEffect(() => {
     if (!memberIdForRt) return;
     const ch = supabase.channel('report_rt_' + memberIdForRt)
@@ -244,7 +293,6 @@ export default function ReportScreen() {
               <Text style={styles.unreadText}>NEW {unreadCount}</Text>
             </View>
           )}
-          {/* 크레딧 잔액 표시 */}
           <TouchableOpacity
             style={styles.creditChip}
             onPress={() => setShowChargeModal(true)}
@@ -258,7 +306,6 @@ export default function ReportScreen() {
         </View>
       </View>
 
-      {/* 첫 1건 무료 안내 배너 (무료 체험 전) */}
       {!creditInfo.free_report_used && reports.length > 0 && (
         <View style={styles.freeBanner}>
           <Ionicons name="gift-outline" size={16} color="#9b59b6" />
@@ -346,81 +393,162 @@ export default function ReportScreen() {
 
                     {/* 1. 오늘 레슨 요약 */}
                     <View style={styles.section}>
-                      <View style={styles.sectionTitleRow}>
-                        <Text style={styles.sectionIcon}>📋</Text>
-                        <Text style={styles.sectionTitle}>오늘 레슨 요약</Text>
+                      <View style={styles.sectionHeaderRow}>
+                        <View style={styles.sectionTitleRow}>
+                          <Text style={styles.sectionIcon}>📋</Text>
+                          <Text style={styles.sectionTitle}>오늘 레슨 요약</Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditingTarget({ reportId: report.id, field: 'summary' });
+                            setEditingValue(report.summary || '');
+                            setEditModalLabel('오늘 레슨 요약');
+                            setEditModalVisible(true);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="create-outline" size={18} color={Colors.mutedFg} />
+                        </TouchableOpacity>
                       </View>
                       <View style={styles.summaryBox}>
                         <Text style={styles.summaryText}>{report.summary}</Text>
                       </View>
                     </View>
 
-                    {/* 2. 오늘의 중요 성과 */}
+                    {/* 2. 오늘 잘한 점 */}
                     {report.achievements?.length > 0 && (
                       <View style={styles.section}>
-                        <View style={styles.sectionTitleRow}>
-                          <Text style={styles.sectionIcon}>🏆</Text>
-                          <Text style={styles.sectionTitle}>오늘의 중요 성과</Text>
+                        <View style={styles.sectionHeaderRow}>
+                          <View style={styles.sectionTitleRow}>
+                            <Text style={styles.sectionIcon}>🏆</Text>
+                            <Text style={styles.sectionTitle}>오늘 잘한 점</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setEditingTarget({ reportId: report.id, field: 'achievements' });
+                              setEditingValue(report.achievements.join('\n'));
+                              setEditModalLabel('오늘 잘한 점 (줄바꿈으로 항목 구분)');
+                              setEditModalVisible(true);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="create-outline" size={18} color={Colors.mutedFg} />
+                          </TouchableOpacity>
                         </View>
                         {report.achievements.map((item, i) => (
-                          <View key={i} style={styles.achievementRow}>
-                            <View style={styles.achievementDot} />
-                            <Text style={styles.achievementText}>{item}</Text>
+                          <View key={i} style={styles.listRow}>
+                            <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                            <Text style={styles.listText}>{item}</Text>
                           </View>
                         ))}
                       </View>
                     )}
 
-                    {/* 3. 개선 및 보완 포인트 */}
+                    {/* 3. 개선 포인트 */}
                     {report.improvement_points?.length > 0 && (
                       <View style={styles.section}>
-                        <View style={styles.sectionTitleRow}>
-                          <Text style={styles.sectionIcon}>💡</Text>
-                          <Text style={styles.sectionTitle}>개선 및 보완 포인트</Text>
+                        <View style={styles.sectionHeaderRow}>
+                          <View style={styles.sectionTitleRow}>
+                            <Text style={styles.sectionIcon}>💡</Text>
+                            <Text style={styles.sectionTitle}>개선 포인트</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setEditingTarget({ reportId: report.id, field: 'improvement_points' });
+                              setEditingValue(report.improvement_points.join('\n'));
+                              setEditModalLabel('개선 포인트 (줄바꿈으로 항목 구분)');
+                              setEditModalVisible(true);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="create-outline" size={18} color={Colors.mutedFg} />
+                          </TouchableOpacity>
                         </View>
                         {report.improvement_points.map((item, i) => (
-                          <View key={i} style={styles.improveRow}>
-                            <Text style={styles.improveNum}>{i + 1}</Text>
-                            <Text style={styles.improveText}>{item}</Text>
+                          <View key={i} style={styles.listRow}>
+                            <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                            <Text style={styles.listText}>{item}</Text>
                           </View>
                         ))}
                       </View>
                     )}
 
-                    {/* 4. 맞춤 개인 연습 플랜 */}
+                    {/* 4. 개인 맞춤 연습 플랜 */}
                     {report.practice_plan?.length > 0 && (
                       <View style={styles.section}>
-                        <View style={styles.sectionTitleRow}>
+                        <View style={[styles.sectionTitleRow, { marginBottom: 10 }]}>
                           <Text style={styles.sectionIcon}>🎯</Text>
-                          <Text style={styles.sectionTitle}>맞춤 개인 연습 플랜</Text>
+                          <Text style={styles.sectionTitle}>개인 맞춤 연습 플랜</Text>
                         </View>
                         {report.practice_plan.map((item, i) => (
-                          <View key={i} style={styles.practiceCard}>
-                            <View style={styles.practiceHeader}>
-                              <View style={styles.practiceIdx}>
-                                <Text style={styles.practiceIdxText}>{i + 1}</Text>
+                          <View key={i} style={styles.drillCard}>
+                            <View style={styles.drillHeader}>
+                              <View style={styles.drillIndex}>
+                                <Text style={styles.drillIndexText}>{i + 1}</Text>
                               </View>
-                              <Text style={styles.practiceTitle}>{item.title}</Text>
+                              <Text style={styles.drillName}>{item.title}</Text>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setEditingTarget({ reportId: report.id, field: 'practice_plan', practiceIndex: i });
+                                  setEditingValue(item.description || '');
+                                  setEditModalLabel(item.title);
+                                  setEditModalVisible(true);
+                                }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Ionicons name="create-outline" size={16} color={Colors.mutedFg} />
+                              </TouchableOpacity>
                             </View>
-                            <Text style={styles.practiceDesc}>{item.description}</Text>
-                            <View style={styles.practiceMeta}>
-                              <View style={styles.metaChip}>
-                                <Ionicons name="time-outline" size={12} color={Colors.primary} />
-                                <Text style={styles.metaText}>{item.duration}</Text>
-                              </View>
-                              <View style={styles.metaChip}>
-                                <Ionicons name="repeat-outline" size={12} color={Colors.primary} />
-                                <Text style={styles.metaText}>{item.frequency}</Text>
-                              </View>
+                            <View style={styles.drillBody}>
+                              {!!item.description && (
+                                <View style={styles.drillRow}>
+                                  <Text style={styles.drillLabel}>방법</Text>
+                                  <Text style={styles.drillValue}>{item.description}</Text>
+                                </View>
+                              )}
+                              {(!!item.duration || !!item.frequency) && (
+                                <View style={styles.drillRow}>
+                                  <Text style={styles.drillLabel}>횟수</Text>
+                                  <Text style={styles.drillValue}>
+                                    {[item.duration, item.frequency].filter(Boolean).join(' × ')}
+                                  </Text>
+                                </View>
+                              )}
+                              {!!item.tip && (
+                                <View style={styles.drillRow}>
+                                  <Text style={styles.drillLabel}>💬 TIP</Text>
+                                  <Text style={styles.drillValue}>{item.tip}</Text>
+                                </View>
+                              )}
                             </View>
-                            {!!item.tip && (
-                              <View style={styles.tipBox}>
-                                <Text style={styles.tipLabel}>💬 TIP</Text>
-                                <Text style={styles.tipText}>{item.tip}</Text>
-                              </View>
-                            )}
                           </View>
                         ))}
+                      </View>
+                    )}
+
+                    {/* 5. 레슨 전체 내용 보기 */}
+                    {report.lesson_plan?.transcript_summary?.lesson_flow && (
+                      <View style={styles.section}>
+                        <TouchableOpacity
+                          style={styles.sectionHeaderRow}
+                          onPress={() => setExpandedTranscript(expandedTranscript === report.id ? null : report.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.sectionTitleRow}>
+                            <Text style={styles.sectionIcon}>📝</Text>
+                            <Text style={styles.sectionTitle}>레슨 전체 내용 보기</Text>
+                          </View>
+                          <Ionicons
+                            name={expandedTranscript === report.id ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color={Colors.mutedFg}
+                          />
+                        </TouchableOpacity>
+                        {expandedTranscript === report.id && (
+                          <Text style={styles.transcriptText}>
+                            {report.lesson_plan.transcript_summary.lesson_flow}
+                          </Text>
+                        )}
                       </View>
                     )}
                   </View>
@@ -431,6 +559,53 @@ export default function ReportScreen() {
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* 섹션 편집 모달 */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }}
+            activeOpacity={1}
+            onPress={() => setEditModalVisible(false)}
+          />
+          <View style={styles.editModalSheet}>
+            <View style={styles.editModalHeader}>
+              <Text style={styles.editModalTitle}>{editModalLabel}</Text>
+            </View>
+            <TextInput
+              style={styles.editModalInput}
+              value={editingValue}
+              onChangeText={setEditingValue}
+              multiline
+              autoFocus
+              textAlignVertical="top"
+            />
+            <View style={styles.editModalBtnRow}>
+              <TouchableOpacity
+                style={styles.editModalCancelBtn}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.editModalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.editModalSaveBtn}
+                onPress={() => saveEdit(editingValue)}
+                disabled={savingEdit}
+              >
+                <Text style={styles.editModalSaveText}>{savingEdit ? '저장 중...' : '저장'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -523,44 +698,76 @@ const styles = StyleSheet.create({
   lockBadgeText: { fontSize: 12, fontWeight: '700', color: '#9b59b6' },
 
   detail: { marginTop: 4 },
-  divider: { height: 1, backgroundColor: Colors.border, marginVertical: 14 },
+  divider: { height: 1, backgroundColor: Colors.mutedBg, marginVertical: 12 },
 
-  section: { marginBottom: 20 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  sectionIcon: { fontSize: 16 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary },
+  section: { marginBottom: 16 },
+  sectionHeaderRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 8,
+  },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sectionIcon: { fontSize: 14 },
+  sectionTitle: { fontSize: 13, fontWeight: '800', color: Colors.foreground },
 
-  summaryBox: { backgroundColor: '#EEF4FF', borderRadius: 10, padding: 14 },
+  summaryBox: { backgroundColor: Colors.mutedBg, borderRadius: 8, padding: 12 },
   summaryText: { fontSize: 14, color: Colors.foreground, lineHeight: 22 },
 
-  achievementRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
-  achievementDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.accentWarm, marginTop: 7, flexShrink: 0 },
-  achievementText: { fontSize: 14, color: Colors.foreground, lineHeight: 22, flex: 1 },
+  listRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  listNum: {
+    fontSize: 12, fontWeight: '800', color: Colors.primary,
+    width: 22, marginTop: 3,
+  },
+  listText: { fontSize: 14, color: Colors.foreground, lineHeight: 22, flex: 1 },
 
-  improveRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
-  improveNum: {
+  // 드릴 카드 (코치앱과 동일)
+  drillCard: {
+    backgroundColor: '#f8fdf9', borderRadius: 10, marginBottom: 10, overflow: 'hidden',
+  },
+  drillHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8,
+  },
+  drillIndex: {
     width: 22, height: 22, borderRadius: 11,
-    backgroundColor: '#FEF3C7', textAlign: 'center', lineHeight: 22,
-    fontSize: 12, fontWeight: '800', color: '#92400E', flexShrink: 0,
+    backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center',
   },
-  improveText: { fontSize: 14, color: Colors.foreground, lineHeight: 22, flex: 1 },
+  drillIndexText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  drillName: { fontSize: 14, fontWeight: '800', color: Colors.foreground, flex: 1 },
+  drillBody: { paddingHorizontal: 12, paddingBottom: 12, gap: 4 },
+  drillRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  drillLabel: {
+    fontSize: 12, fontWeight: '700', color: Colors.navy,
+    width: 60, marginTop: 2, flexShrink: 0,
+  },
+  drillValue: { fontSize: 13, color: Colors.foreground, lineHeight: 20, flex: 1 },
 
-  practiceCard: {
-    backgroundColor: '#F8FDF9', borderRadius: 12, padding: 14, marginBottom: 10,
-    borderWidth: 1, borderColor: '#D1FAE5',
+  // 레슨 전체 내용
+  transcriptText: { fontSize: 13, color: Colors.foreground, lineHeight: 22, marginTop: 8 },
+
+  // 편집 모달 (코치앱과 동일)
+  editModalSheet: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 36, maxHeight: '70%',
   },
-  practiceHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  practiceIdx: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-  practiceIdxText: { fontSize: 12, fontWeight: '800', color: '#fff' },
-  practiceTitle: { fontSize: 15, fontWeight: '800', color: Colors.foreground, flex: 1 },
-  practiceDesc: { fontSize: 14, color: Colors.foreground, lineHeight: 22, marginBottom: 10 },
-  practiceMeta: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  metaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#E0F2FE', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
+  editModalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12,
   },
-  metaText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
-  tipBox: { backgroundColor: '#FFFBEB', borderRadius: 8, padding: 10, borderLeftWidth: 3, borderLeftColor: '#F59E0B' },
-  tipLabel: { fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 },
-  tipText: { fontSize: 13, color: '#78350F', lineHeight: 20 },
+  editModalTitle: { fontSize: 15, fontWeight: '700', color: Colors.foreground },
+  editModalInput: {
+    borderWidth: 1, borderColor: Colors.primary, borderRadius: 10,
+    padding: 12, fontSize: 14, color: Colors.foreground,
+    minHeight: 120, textAlignVertical: 'top', lineHeight: 22,
+    backgroundColor: '#fff', marginBottom: 12,
+  },
+  editModalBtnRow: { flexDirection: 'row', gap: 10 },
+  editModalCancelBtn: {
+    flex: 1, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: 10, paddingVertical: 12, alignItems: 'center',
+  },
+  editModalCancelText: { fontSize: 14, color: Colors.foreground },
+  editModalSaveBtn: {
+    flex: 2, backgroundColor: Colors.primary,
+    borderRadius: 10, paddingVertical: 12, alignItems: 'center',
+  },
+  editModalSaveText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });
