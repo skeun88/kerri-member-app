@@ -13,6 +13,7 @@ import {
   getMyCreditInfo, unlockReport,
   CHARGE_OPTIONS, REPORT_CREDIT_COST, CreditInfo,
 } from '../../lib/reportCredits';
+import { IS_BETA } from '../../lib/beta';
 
 interface PracticeItem {
   title: string;
@@ -200,7 +201,7 @@ export default function ReportScreen() {
 
   /** 리포트 열람 — 잠금 해제 또는 이미 열람된 경우 바로 펼침 */
   async function handleOpen(report: MemberReport) {
-    if (report.credit_unlocked) {
+    if (IS_BETA || report.credit_unlocked) {
       setExpandedId(prev => prev === report.id ? null : report.id);
       if (!report.is_read) markRead(report.id);
       return;
@@ -263,7 +264,7 @@ export default function ReportScreen() {
     return () => { supabase.removeChannel(ch); };
   }, [memberIdForRt]);
 
-  const unreadCount = reports.filter(r => !r.is_read && r.credit_unlocked).length;
+  const unreadCount = reports.filter(r => !r.is_read && (IS_BETA || r.credit_unlocked)).length;
 
   if (loading) {
     return (
@@ -354,14 +355,14 @@ export default function ReportScreen() {
                       <Text style={styles.cardDate}>
                         {formatDate(report.lesson_date || report.created_at)}
                       </Text>
-                      {!report.is_read && report.credit_unlocked && (
+                      {!report.is_read && (IS_BETA || report.credit_unlocked) && (
                         <View style={styles.newBadge}>
                           <Text style={styles.newBadgeText}>NEW</Text>
                         </View>
                       )}
                     </View>
                     <Text style={styles.cardPreview} numberOfLines={2}>
-                      {report.credit_unlocked
+                      {(IS_BETA || report.credit_unlocked)
                         ? (report.summary || '레슨 리포트')
                         : '리포트를 열어보려면 탭하세요'
                       }
@@ -370,7 +371,7 @@ export default function ReportScreen() {
 
                   {unlockingId === report.id ? (
                     <ActivityIndicator size="small" color={Colors.primary} />
-                  ) : report.credit_unlocked ? (
+                  ) : (IS_BETA || report.credit_unlocked) ? (
                     <Ionicons
                       name={expandedId === report.id ? 'chevron-up' : 'chevron-down'}
                       size={20}
@@ -387,7 +388,7 @@ export default function ReportScreen() {
                 </View>
 
                 {/* 확장 내용 (열람된 경우만) */}
-                {expandedId === report.id && report.credit_unlocked && (
+                {expandedId === report.id && (IS_BETA || report.credit_unlocked) && (
                   <View style={styles.detail}>
                     <View style={styles.divider} />
 
