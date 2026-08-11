@@ -10,6 +10,8 @@ import { supabase, getMyMemberRow } from '../lib/supabase';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '../lib/theme';
+import { registerMemberPushToken } from '../lib/notifications';
+import { Alert } from 'react-native';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -67,6 +69,10 @@ export default function RootLayout() {
       }
     }
   }, [session, loading, segments]);
+useEffect(() => {
+    if (!session) return;
+    registerMemberPushToken().catch(e => console.error('[PUSH] 등록 실패:', e));
+  }, [session]);
 
   async function checkOnboarding() {
     setOnboardingChecked(true);
