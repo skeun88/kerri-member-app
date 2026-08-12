@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
+import { registerMemberPushToken } from '../../lib/notifications';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -88,6 +89,9 @@ export default function LoginScreen() {
       console.log('[LOGIN] 세션 정상 → getMyMemberRow() 호출');
       const member = await getMyMemberRow();
       console.log('[LOGIN] member:', member ? `id=${member.id} birth_date=${member.birth_date}` : 'null');
+
+      // onAuthStateChange 미발화 시에도 토큰 등록되도록 로그인 시점에 직접 호출
+      registerMemberPushToken().catch(() => {});
 
       if (!member || member.birth_date) {
         // 온보딩 완료이거나 member row 없음(기존 회원) → 홈으로
