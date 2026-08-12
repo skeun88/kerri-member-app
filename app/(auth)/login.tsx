@@ -4,13 +4,15 @@ import {
   Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
+import { useRouter } from 'expo-router';
+import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 export default function LoginScreen() {
+  const router = useRouter();
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -63,9 +65,39 @@ export default function LoginScreen() {
       });
 
       if (setErr) {
+        console.error('[LOGIN] setSession error:', setErr.message);
         Alert.alert('오류', '세션 설정 실패: ' + setErr.message);
+        return;
       }
-      // 세션 설정 성공 → _layout.tsx의 onAuthStateChange가 감지해서 (tabs)로 이동
+
+      // 작업 1: setSession 후 세션 실제 검증
+      const { data: { session: verifiedSession } } = await supabase.auth.getSession();
+      console.log('[LOGIN] setSession 후 세션:', verifiedSession?.user?.id ?? 'null');
+
+      if (!verifiedSession) {
+        // 작업 3: onAuthStateChange 미발화 단서 — 세션이 null로 돌아옴
+        console.error('[LOGIN] setSession 성공했지만 세션 null — onAuthStateChange SIGNED_OUT 가능성');
+        Alert.alert(
+          '로그인 오류',
+          '세션 초기화 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.\n(코드: SESSION_NULL)',
+        );
+        return;
+      }
+
+      // 작업 2: 세션 정상 → onAuthStateChange 의존 대신 직접 이동
+      console.log('[LOGIN] 세션 정상 → getMyMemberRow() 호출');
+      const member = await getMyMemberRow();
+      console.log('[LOGIN] member:', member ? `id=${member.id} birth_date=${member.birth_date}` : 'null');
+
+      if (!member || member.birth_date) {
+        // 온보딩 완료이거나 member row 없음(기존 회원) → 홈으로
+        console.log('[LOGIN] → /(tabs) 이동');
+        router.replace('/(tabs)');
+      } else {
+        // birth_date 없음 → 온보딩 필요
+        console.log('[LOGIN] → /(auth)/onboarding 이동');
+        router.replace('/(auth)/onboarding');
+      }
     } catch (e) {
       console.error('Login error:', e);
       Alert.alert('네트워크 오류', '인터넷 연결을 확인하고 다시 시도해주세요.');

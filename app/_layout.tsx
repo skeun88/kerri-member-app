@@ -28,7 +28,8 @@ export default function RootLayout() {
       setSession(session);
       setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[AUTH] onAuthStateChange:', event, session?.user?.id ?? 'null');
       setSession(session);
     });
     return () => subscription.unsubscribe();
