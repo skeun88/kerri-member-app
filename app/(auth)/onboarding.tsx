@@ -7,6 +7,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
+import { registerMemberPushToken } from '../../lib/notifications';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 type Hand = '오른손' | '왼손';
@@ -97,6 +98,7 @@ export default function OnboardingScreen() {
         return;
       }
 
+      registerMemberPushToken().catch(() => {});
       router.replace('/(tabs)');
     } catch (e) {
       Alert.alert('오류', '잠시 후 다시 시도해주세요.');
@@ -256,7 +258,7 @@ export default function OnboardingScreen() {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/(tabs)')}>
+          <TouchableOpacity style={styles.skipBtn} onPress={() => { registerMemberPushToken().catch(() => {}); router.replace('/(tabs)'); }}>
             <Text style={styles.skipBtnText}>나중에 입력할게요</Text>
           </TouchableOpacity>
         </View>
