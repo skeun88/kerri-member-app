@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import * as SplashScreen from 'expo-splash-screen';
-
-SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -53,12 +50,6 @@ export default function RootLayout() {
       setIsNavigationReady(true);
     }
   }, [segments, pendingSegment]);
-
-  useEffect(() => {
-    if (isNavigationReady) {
-      SplashScreen.hideAsync();
-    }
-  }, [isNavigationReady]);
 
   useEffect(() => {
     if (loading) return;
