@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
   Text,
   Image,
   StyleSheet,
   Animated,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -47,39 +47,38 @@ export function LoadingScreen({ visible, onRetry, timeoutMs = 5000 }: Props) {
     return () => clearTimeout(timer);
   }, [visible, timeoutMs]);
 
-  if (!shouldRender) return null;
-
   return (
-    <Animated.View
-      style={[StyleSheet.absoluteFill, styles.container, { opacity }]}
-      pointerEvents={visible ? 'auto' : 'none'}
-    >
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.content}>
-          <Image
-            source={require('../assets/icon.png')}
-            style={styles.symbol}
-            resizeMode="contain"
-          />
-          <Text style={styles.logo}>KERRI</Text>
-          <Text style={styles.tagline}>당신의 가르침이 오래 기억되도록.</Text>
-          {showRetry ? (
-            <TouchableOpacity onPress={onRetry} style={styles.retryButton} activeOpacity={0.7}>
-              <Text style={styles.retryText}>다시 시도</Text>
-            </TouchableOpacity>
-          ) : (
-            <ActivityIndicator size="small" color="#C0755A" style={styles.indicator} />
-          )}
-        </View>
-      </SafeAreaView>
-    </Animated.View>
+    <Modal visible={shouldRender} transparent animationType="none" statusBarTranslucent>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.container, { opacity }]}
+        pointerEvents="auto"
+      >
+        <SafeAreaView style={styles.safe}>
+          <Animated.View style={styles.content}>
+            <Image
+              source={require('../assets/icon.png')}
+              style={styles.symbol}
+              resizeMode="contain"
+            />
+            <Text style={styles.logo}>KERRI</Text>
+            <Text style={styles.tagline}>당신의 가르침이 오래 기억되도록.</Text>
+            {showRetry ? (
+              <TouchableOpacity onPress={onRetry} style={styles.retryButton} activeOpacity={0.7}>
+                <Text style={styles.retryText}>다시 시도</Text>
+              </TouchableOpacity>
+            ) : (
+              <ActivityIndicator size="small" color="#C0755A" style={styles.indicator} />
+            )}
+          </Animated.View>
+        </SafeAreaView>
+      </Animated.View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#F7F0E9',
-    zIndex: 999,
   },
   safe: {
     flex: 1,
