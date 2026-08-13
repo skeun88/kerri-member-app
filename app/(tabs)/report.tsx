@@ -264,7 +264,7 @@ export default function ReportScreen() {
   return (
     <View style={styles.container}>
       <ChargeModal
-        visible={showChargeModal}
+        visible={showChargeModal && !IS_BETA}
         creditInfo={creditInfo}
         onClose={() => { setShowChargeModal(false); setPendingUnlockId(null); }}
       />
@@ -280,11 +280,13 @@ export default function ReportScreen() {
               <Text style={styles.unreadText}>NEW {unreadCount}</Text>
             </View>
           )}
-          <TouchableOpacity style={styles.creditChip} onPress={() => setShowChargeModal(true)}>
-            <Ionicons name="wallet-outline" size={14} color={Colors.primary} />
-            <Text style={styles.creditChipText}>{creditInfo.balance.toLocaleString()}원</Text>
-            <Ionicons name="add" size={14} color={Colors.primary} />
-          </TouchableOpacity>
+          {!IS_BETA && (
+            <TouchableOpacity style={styles.creditChip} onPress={() => setShowChargeModal(true)}>
+              <Ionicons name="wallet-outline" size={14} color={Colors.primary} />
+              <Text style={styles.creditChipText}>{creditInfo.balance.toLocaleString()}원</Text>
+              <Ionicons name="add" size={14} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
