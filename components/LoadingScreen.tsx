@@ -1,87 +1,54 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  View,
   Text,
   Image,
   StyleSheet,
-  Animated,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Props {
-  visible: boolean;
   onRetry?: () => void;
   timeoutMs?: number;
 }
 
-export function LoadingScreen({ visible, onRetry, timeoutMs = 5000 }: Props) {
-  const [shouldRender, setShouldRender] = useState(visible);
+export function LoadingScreen({ onRetry, timeoutMs = 5000 }: Props) {
   const [showRetry, setShowRetry] = useState(false);
-  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
 
   useEffect(() => {
-    if (visible) {
-      setShowRetry(false);
-      setShouldRender(true);
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) setShouldRender(false);
-      });
-    }
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible) return;
     const timer = setTimeout(() => setShowRetry(true), timeoutMs);
     return () => clearTimeout(timer);
-  }, [visible, timeoutMs]);
+  }, [timeoutMs]);
 
   return (
-    <Modal visible={shouldRender} transparent animationType="none" statusBarTranslucent>
-      <Animated.View
-        style={[StyleSheet.absoluteFill, styles.container, { opacity }]}
-        pointerEvents="auto"
-      >
-        <SafeAreaView style={styles.safe}>
-          <Animated.View style={styles.content}>
-            <Image
-              source={require('../assets/icon.png')}
-              style={styles.symbol}
-              resizeMode="contain"
-            />
-            <Text style={styles.logo}>KERRI</Text>
-            <Text style={styles.tagline}>당신의 가르침이 오래 기억되도록.</Text>
-            {showRetry ? (
-              <TouchableOpacity onPress={onRetry} style={styles.retryButton} activeOpacity={0.7}>
-                <Text style={styles.retryText}>다시 시도</Text>
-              </TouchableOpacity>
-            ) : (
-              <ActivityIndicator size="small" color="#C0755A" style={styles.indicator} />
-            )}
-          </Animated.View>
-        </SafeAreaView>
-      </Animated.View>
-    </Modal>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <Image
+          source={require('../assets/icon.png')}
+          style={styles.symbol}
+          resizeMode="contain"
+        />
+        <Text style={styles.logo}>KERRI</Text>
+        <Text style={styles.tagline}>당신의 가르침이 오래 기억되도록.</Text>
+        {showRetry ? (
+          <TouchableOpacity onPress={onRetry} style={styles.retryButton} activeOpacity={0.7}>
+            <Text style={styles.retryText}>다시 시도</Text>
+          </TouchableOpacity>
+        ) : (
+          <ActivityIndicator size="small" color="#C0755A" style={styles.indicator} />
+        )}
+      </View>
+      <Text style={styles.versionMarker}>v4</Text>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#F7F0E9',
-  },
-  safe: {
     flex: 1,
+    backgroundColor: '#F7F0E9',
   },
   content: {
     flex: 1,
@@ -108,9 +75,7 @@ const styles = StyleSheet.create({
     marginBottom: 36,
     letterSpacing: 0.3,
   },
-  indicator: {
-    // ActivityIndicator 자체 size="small" 유지
-  },
+  indicator: {},
   retryButton: {
     paddingVertical: 8,
     paddingHorizontal: 24,
@@ -122,5 +87,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#C0755A',
+  },
+  versionMarker: {
+    textAlign: 'center',
+    fontSize: 10,
+    color: '#C0B5AA',
+    paddingBottom: 8,
   },
 });

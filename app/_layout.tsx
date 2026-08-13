@@ -125,6 +125,14 @@ useEffect(() => {
     }
   }
 
+  if (loading || !isNavigationReady) {
+    return (
+      <GestureHandlerRootView style={styles.flex}>
+        <LoadingScreen onRetry={initSession} />
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={styles.flex}>
       <Stack screenOptions={{ headerShown: false }}>
@@ -132,10 +140,6 @@ useEffect(() => {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="qr-onboarding" />
       </Stack>
-      <LoadingScreen
-        visible={loading || !isNavigationReady}
-        onRetry={initSession}
-      />
     </GestureHandlerRootView>
   );
 }
