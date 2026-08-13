@@ -16,7 +16,7 @@ interface Props {
   timeoutMs?: number;
 }
 
-export function LoadingScreen({ visible, onRetry, timeoutMs = 15000 }: Props) {
+export function LoadingScreen({ visible, onRetry, timeoutMs = 5000 }: Props) {
   const [shouldRender, setShouldRender] = useState(visible);
   const [showRetry, setShowRetry] = useState(false);
   const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -57,7 +57,7 @@ export function LoadingScreen({ visible, onRetry, timeoutMs = 15000 }: Props) {
       <SafeAreaView style={styles.safe}>
         <View style={styles.content}>
           <Image
-            source={require('../assets/splash-icon.png')}
+            source={require('../assets/icon.png')}
             style={styles.symbol}
             resizeMode="contain"
           />
