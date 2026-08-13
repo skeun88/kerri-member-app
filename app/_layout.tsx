@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -21,6 +21,8 @@ export default function RootLayout() {
   const [pendingSegment, setPendingSegment] = useState<string | null>(null);
   const router = useRouter();
   const segments = useSegments() as string[];
+  const segmentsRef = useRef(segments);
+  useEffect(() => { segmentsRef.current = segments; }, [segments]);
 
   const initSession = useCallback(() => {
     setLoading(true);
@@ -51,6 +53,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loading) return;
+    if (segments.length === 0) return;
 
     const seg0 = segments[0] as string | undefined;
     const seg1 = segments[1] as string | undefined;
@@ -85,8 +88,12 @@ useEffect(() => {
     setOnboardingChecked(true);
     try {
       const member = await getMyMemberRow();
+      // await 이후엔 최신 segments를 ref에서 읽음 (stale closure 방지)
+      const curSeg0 = segmentsRef.current[0] as string | undefined;
+      const curSeg1 = segmentsRef.current[1] as string | undefined;
+
       if (!member) {
-        if (segments[0] === '(auth)') {
+        if (curSeg0 === '(auth)') {
           router.replace('/(tabs)');
           setPendingSegment('(tabs)');
         } else {
@@ -96,21 +103,20 @@ useEffect(() => {
       }
 
       const needsOnboarding = !member.birth_date;
-      const seg0 = segments[0] as string | undefined;
-      const seg1 = segments[1] as string | undefined;
-      const inOnboarding = seg1 === 'onboarding';
+      const inOnboarding = curSeg1 === 'onboarding';
 
       if (needsOnboarding && !inOnboarding) {
         router.replace('/(auth)/onboarding');
         setPendingSegment('(auth)');
-      } else if (!needsOnboarding && seg0 === '(auth)') {
+      } else if (!needsOnboarding && curSeg0 === '(auth)') {
         router.replace('/(tabs)');
         setPendingSegment('(tabs)');
       } else {
         setIsNavigationReady(true);
       }
     } catch {
-      if (segments[0] === '(auth)') {
+      const curSeg0 = segmentsRef.current[0] as string | undefined;
+      if (curSeg0 === '(auth)') {
         router.replace('/(tabs)');
         setPendingSegment('(tabs)');
       } else {
