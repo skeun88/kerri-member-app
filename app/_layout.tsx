@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -7,11 +7,10 @@ export const unstable_settings = {
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { supabase, getMyMemberRow } from '../lib/supabase';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Colors } from '../lib/theme';
 import { registerMemberPushToken } from '../lib/notifications';
-import { Alert } from 'react-native';
+import { LoadingScreen } from '../components/LoadingScreen';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -23,11 +22,18 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments() as string[];
 
-  useEffect(() => {
+  const initSession = useCallback(() => {
+    setLoading(true);
+    setOnboardingChecked(false);
+    setIsNavigationReady(false);
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
+  }, []);
+
+  useEffect(() => {
+    initSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[AUTH] onAuthStateChange:', event, session?.user?.id ?? 'null');
       setSession(session);
@@ -120,16 +126,14 @@ useEffect(() => {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="qr-onboarding" />
       </Stack>
-      {(loading || !isNavigationReady) && (
-        <View style={[StyleSheet.absoluteFill, styles.overlay]}>
-          <ActivityIndicator size="large" color="#fff" />
-        </View>
-      )}
+      <LoadingScreen
+        visible={loading || !isNavigationReady}
+        onRetry={initSession}
+      />
     </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  overlay: { justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primary },
 });

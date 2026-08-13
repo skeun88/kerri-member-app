@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F7F0E9"
     },
     "ios": {
       "bundleIdentifier": "com.kerri.memberapp",
