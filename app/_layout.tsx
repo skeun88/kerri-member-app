@@ -11,6 +11,7 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { registerMemberPushToken } from '../lib/notifications';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { configureRevenueCat } from '../lib/revenueCat';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -39,6 +40,7 @@ export default function RootLayout() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[AUTH] onAuthStateChange:', event, session?.user?.id ?? 'null');
       setSession(session);
+      if (session?.user) { try { configureRevenueCat(session.user.id); } catch {} }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -139,6 +141,7 @@ useEffect(() => {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="qr-onboarding" />
+        <Stack.Screen name="subscription" />
       </Stack>
     </GestureHandlerRootView>
   );

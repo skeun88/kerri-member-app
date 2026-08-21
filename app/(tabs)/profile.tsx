@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
@@ -17,6 +18,7 @@ interface MemberProfile {
 const LEVEL_ORDER = ['입문','초급','중급','상급','선수'];
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [email, setEmail] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -168,6 +170,18 @@ export default function ProfileScreen() {
             <View style={styles.statCard}>
               <Text style={styles.statNum}>{profile?.remaining_credits ?? 0}</Text>
               <Text style={styles.statLabel}>잔여 레슨</Text>
+            </View>
+          </View>
+
+          {/* 구독 */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>구독</Text>
+            <View style={styles.card}>
+              <TouchableOpacity style={styles.menuRow} onPress={() => router.push('/subscription' as any)}>
+                <Ionicons name="star-outline" size={18} color={Colors.primary} />
+                <Text style={[styles.menuLabel, { color: Colors.primary }]}>구독 관리</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.placeholder} />
+              </TouchableOpacity>
             </View>
           </View>
 

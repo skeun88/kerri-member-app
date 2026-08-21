@@ -61,10 +61,9 @@ function ChargeModal({
   visible, creditInfo, onClose,
 }: { visible: boolean; creditInfo: CreditInfo; onClose: () => void }) {
   const router = useRouter();
-  const [selectedAmount, setSelectedAmount] = useState(10000);
   const handleCharge = () => {
     onClose();
-    router.push({ pathname: '/credit-charge', params: { amount: String(selectedAmount) } });
+    router.push({ pathname: '/credit-charge' });
   };
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -77,23 +76,9 @@ function ChargeModal({
           </View>
           <Text style={cs.sheetTitle}>크레딧 충전</Text>
           <Text style={cs.sheetSub}>리포트 1건당 {REPORT_CREDIT_COST.toLocaleString()}원</Text>
-          <View style={cs.optionList}>
-            {CHARGE_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.amount}
-                style={[cs.optionCard, selectedAmount === opt.amount && cs.optionSelected]}
-                onPress={() => setSelectedAmount(opt.amount)}
-              >
-                <Text style={[cs.optionAmount, selectedAmount === opt.amount && cs.optionAmountSelected]}>
-                  {opt.label}
-                </Text>
-                <Text style={cs.optionDesc}>{opt.description}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
           <TouchableOpacity style={cs.chargeBtn} onPress={handleCharge}>
-            <Ionicons name="card-outline" size={20} color="#fff" />
-            <Text style={cs.chargeBtnText}>카드로 {selectedAmount.toLocaleString()}원 충전하기</Text>
+            <Ionicons name="bag-handle-outline" size={20} color="#fff" />
+            <Text style={cs.chargeBtnText}>인앱결제로 충전하기</Text>
           </TouchableOpacity>
           <TouchableOpacity style={cs.cancelBtn} onPress={onClose}>
             <Text style={cs.cancelBtnText}>취소</Text>
