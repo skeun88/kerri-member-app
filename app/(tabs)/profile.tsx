@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
+import { getSubscriptionStatus } from '../../lib/revenueCat';
 
 interface MemberProfile {
   id: string; name: string; level: string; phone: string;
@@ -25,6 +26,8 @@ export default function ProfileScreen() {
   const [totalLessons, setTotalLessons] = useState(0);
   const [attendedLessons, setAttendedLessons] = useState(0);
   const [attendanceDots, setAttendanceDots] = useState<boolean[]>([]);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [subscriptionLabel, setSubscriptionLabel] = useState('');
 
   const [editModal, setEditModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -52,6 +55,17 @@ export default function ProfileScreen() {
     if (!mem) return;
     setProfile(mem);
     setEditName(mem.name);
+
+    // 구독 상태 로드
+    try {
+      const subStatus = await getSubscriptionStatus();
+      setIsSubscribed(subStatus.isActive);
+      if (subStatus.isActive && subStatus.customerInfo) {
+        const active = subStatus.customerInfo.entitlements.active;
+        setSubscriptionLabel(active['pro'] ? 'Pro 플랜' : active['basic'] ? 'Basic 플랜' : '구독 중');
+      }
+    } catch {}
+
 
     // 총 레슨 수: lesson_members 기준 (회원이 SELECT 가능한 RLS)
     const { data: lm } = await supabase.from('lesson_members').select('lesson_id').eq('member_id', mem.id);
@@ -173,17 +187,29 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* 구독 */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>구독</Text>
-            <View style={styles.card}>
-              <TouchableOpacity style={styles.menuRow} onPress={() => router.push('/subscription' as any)}>
-                <Ionicons name="star-outline" size={18} color={Colors.primary} />
-                <Text style={[styles.menuLabel, { color: Colors.primary }]}>구독 관리</Text>
-                <Ionicons name="chevron-forward" size={16} color={Colors.placeholder} />
-              </TouchableOpacity>
+          {/* 구독 상태 카드 — 전체 터치 시 구독 관리 화면(/subscription)으로 이동 */}
+          <TouchableOpacity
+            style={styles.subCard}
+            onPress={() => router.push('/subscription' as any)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.subCardLeft}>
+              <Ionicons
+                name={isSubscribed ? 'star' : 'star-outline'}
+                size={20}
+                color={isSubscribed ? '#f59e0b' : Colors.mutedFg}
+              />
+              <View>
+                <Text style={styles.subCardTitle}>
+                  {isSubscribed ? subscriptionLabel || '구독 중' : '구독 플랜 없음'}
+                </Text>
+                <Text style={styles.subCardSub}>
+                  {isSubscribed ? '구독 중' : '플랜 보기'}
+                </Text>
+              </View>
             </View>
-          </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.placeholder} />
+          </TouchableOpacity>
 
           {/* 계정 */}
           <View style={styles.section}>
@@ -260,6 +286,15 @@ const styles = StyleSheet.create({
   growthBorder: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: Colors.borderLight },
   growthLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foreground },
   growthValue: { fontSize: 14, fontWeight: '800', color: Colors.primary },
+  subCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.white, borderRadius: Radius.xl, borderWidth: 1,
+    borderColor: Colors.border, marginHorizontal: 16, marginBottom: 16,
+    padding: 16, ...Shadow.sm,
+  },
+  subCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  subCardTitle: { fontSize: 15, fontWeight: '700', color: Colors.foreground },
+  subCardSub: { fontSize: 12, color: Colors.mutedFg, marginTop: 2 },
   menuRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
   menuLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foreground },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
