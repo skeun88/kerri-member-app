@@ -8,6 +8,9 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Radius, Shadow } from '../lib/theme';
 import { getSubscriptionStatus } from '../lib/revenueCat';
+import { supabase } from '../lib/supabase';
+
+const CREDIT_PRODUCT_ID = 'kerri_credit_4900';
 
 const PLAN_DISPLAY = {
   basic: {
@@ -73,21 +76,34 @@ async function purchaseViaRevenueCat(planKey: PlanKey, billingCycle: BillingCycl
   }
 }
 
-async function purchaseCreditViaRevenueCat(): Promise<string> {
+async function purchaseCreditViaRevenueCat(): Promise<{
+  status: 'success' | 'user_cancelled' | 'package_not_found' | 'error';
+  transactionId?: string;
+  productId?: string;
+  error?: string;
+}> {
   try {
     const Purchases = require('react-native-purchases').default;
     const offerings = await Purchases.getOfferings();
     const packages = offerings?.current?.availablePackages ?? [];
-    const creditPackage = packages.find((pkg: any) => {
-      const id = pkg.product.identifier.toLowerCase();
-      return id.includes('credit') || id.includes('charge') || id.includes('lesson');
-    });
-    if (!creditPackage) return 'package_not_found';
-    await Purchases.purchasePackage(creditPackage);
-    return 'success';
+    const creditPackage = packages.find((pkg: any) =>
+      pkg.product.identifier === CREDIT_PRODUCT_ID ||
+      pkg.product.identifier.toLowerCase().includes('credit') ||
+      pkg.product.identifier.toLowerCase().includes('lesson')
+    );
+    if (!creditPackage) return { status: 'package_not_found' };
+    const { customerInfo } = await Purchases.purchasePackage(creditPackage);
+    const tx = customerInfo.nonSubscriptionTransactions?.find(
+      (t: any) => t.productIdentifier === creditPackage.product.identifier
+    );
+    return {
+      status: 'success',
+      transactionId: tx?.transactionIdentifier,
+      productId: creditPackage.product.identifier,
+    };
   } catch (e: any) {
-    if (e?.userCancelled) return 'user_cancelled';
-    return e?.message ?? 'error';
+    if (e?.userCancelled) return { status: 'user_cancelled' };
+    return { status: 'error', error: e?.message ?? 'error' };
   }
 }
 
@@ -204,14 +220,35 @@ export default function SubscriptionScreen() {
   async function handleCreditPurchase() {
     setPurchasing(true);
     const result = await purchaseCreditViaRevenueCat();
-    setPurchasing(false);
 
-    if (result === 'success') {
-      Alert.alert('충전 완료', 'AI 레슨 기록 10회가 충전되었습니다.');
-    } else if (result === 'package_not_found') {
+    if (result.status === 'user_cancelled') { setPurchasing(false); return; }
+    if (result.status === 'package_not_found') {
+      setPurchasing(false);
       Alert.alert('준비 중', 'AI 레슨 기록 충전권은 곧 구매 가능합니다.');
-    } else if (result !== 'user_cancelled') {
-      Alert.alert('구매 실패', result || '구매 중 오류가 발생했습니다.');
+      return;
+    }
+    if (result.status === 'error') {
+      setPurchasing(false);
+      Alert.alert('구매 실패', result.error || '구매 중 오류가 발생했습니다.');
+      return;
+    }
+
+    // 구매 성공 → edge function으로 크레딧 적립
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('confirm-iap-credit', {
+        body: {
+          productId: result.productId ?? CREDIT_PRODUCT_ID,
+          transactionId: result.transactionId ?? `${CREDIT_PRODUCT_ID}-${Date.now()}`,
+        },
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      setPurchasing(false);
+      if (error || !data?.success) throw new Error(data?.error || '충전 확인 실패');
+      Alert.alert('충전 완료', `AI 레슨 기록 10회가 충전됐어요!\n현재 잔액: ${(data.balance as number).toLocaleString()}원`);
+    } catch (err: any) {
+      setPurchasing(false);
+      Alert.alert('충전 오류', '결제는 완료됐지만 크레딧 적립에 실패했습니다. 고객센터에 문의해주세요.');
     }
   }
 
