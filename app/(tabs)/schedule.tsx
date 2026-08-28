@@ -60,6 +60,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
   const [bookingMsg, setBookingMsg] = useState('');
   const [sending, setSending] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [coachAvailability, setCoachAvailability] = useState<{ days: number[]; startMin: number; endMin: number } | null>(null);
 
   const todayStr = todayKST();
 
@@ -95,6 +96,15 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
   async function loadBusy() {
     if (!coachId) return;
     setLoadingSlots(true);
+
+    // 코치 가용 시간 로드
+    const { data: avail } = await supabase.from('coach_availability').select('*').eq('coach_id', coachId).maybeSingle();
+    if (avail) {
+      const [sh, sm] = (avail.available_start ?? '09:00').slice(0, 5).split(':').map(Number);
+      const [eh, em] = (avail.available_end ?? '18:00').slice(0, 5).split(':').map(Number);
+      setCoachAvailability({ days: avail.available_days ?? [], startMin: sh * 60 + sm, endMin: eh * 60 + em });
+    }
+
     const firstDay = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-01`;
     const lastDay = new Date(calMonth.year, calMonth.month+1, 0);
     const lastDayStr = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
@@ -126,16 +136,19 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
   function handleDateSelect(dateStr: string) {
     if (dateStr < todayStr) return;
     setSelectedDate(dateStr);
+    const dow = new Date(dateStr + 'T12:00:00+09:00').getDay();
+    if (coachAvailability && !coachAvailability.days.includes(dow)) {
+      setAvailableSlots([]);
+      return;
+    }
+    const rangeStart = coachAvailability ? coachAvailability.startMin : 6 * 60;
+    const rangeEnd = coachAvailability ? coachAvailability.endMin : 22 * 60;
     const dayBusy = busySlots.filter(s => s.date === dateStr);
     const slots: string[] = [];
-    for (let h = 6; h < 22; h++) {
-      for (const m of [0, 30]) {
-        const start = h * 60 + m;
-        const end = start + lessonDuration;
-        if (end > 22 * 60) continue;
-        const free = !dayBusy.some(b => start < b.endMin && end > b.startMin);
-        if (free) slots.push(mStr(start));
-      }
+    for (let start = rangeStart; start + lessonDuration <= rangeEnd; start += 30) {
+      const end = start + lessonDuration;
+      const free = !dayBusy.some(b => start < b.endMin && end > b.startMin);
+      if (free) slots.push(mStr(start));
     }
     setAvailableSlots(slots);
   }
@@ -170,6 +183,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
         year={calMonth.year} month={calMonth.month}
         selectedDate={selectedDate ?? ''}
         lessonDates={busyDateSet}
+        unavailableDows={coachAvailability ? Array.from({ length: 7 }, (_, i) => i).filter(d => !coachAvailability.days.includes(d)) : undefined}
         onSelectDate={handleDateSelect}
         onPrevMonth={() => setCalMonth(p => {
           const m = p.month - 1; return m < 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: m };
@@ -278,11 +292,12 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
 // ── 커스텀 달력 ──────────────────────────────────────────
 function CalendarView({
-  year, month, selectedDate, lessonDates,
+  year, month, selectedDate, lessonDates, unavailableDows,
   onSelectDate, onPrevMonth, onNextMonth,
 }: {
   year: number; month: number; selectedDate: string;
   lessonDates: Set<string>;
+  unavailableDows?: number[];
   onSelectDate: (d: string) => void;
   onPrevMonth: () => void; onNextMonth: () => void;
 }) {
@@ -319,8 +334,9 @@ function CalendarView({
           const isToday = dateStr === todayStr;
           const hasLesson = lessonDates.has(dateStr);
           const dow = i % 7;
+          const isUnavailable = unavailableDows ? unavailableDows.includes(dow) : false;
           return (
-            <TouchableOpacity key={i} style={cal.cell} onPress={() => onSelectDate(dateStr)}>
+            <TouchableOpacity key={i} style={[cal.cell, isUnavailable && { opacity: 0.3 }]} onPress={() => onSelectDate(dateStr)}>
               <View style={[cal.dayCircle, isSelected && cal.dayCircleSelected, isToday && !isSelected && cal.dayCircleToday]}>
                 <Text style={[
                   cal.dayNum,
