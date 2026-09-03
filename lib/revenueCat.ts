@@ -4,6 +4,7 @@ const RC_API_KEY_IOS = 'appl_ZhygbWObQrWKqWnaBasIVAIJtfD';
 const RC_API_KEY_ANDROID = 'goog_REPLACE_WITH_REAL_ANDROID_KEY';
 
 export const ENTITLEMENT_PRO = 'pro';
+export const ENTITLEMENT_BASIC = 'basic';
 
 function getPurchases() {
   try {
@@ -35,7 +36,8 @@ export async function getSubscriptionStatus(): Promise<{
     const Purchases = getPurchases();
     if (!Purchases) return { isActive: false, expirationDate: null, customerInfo: null };
     const customerInfo = await Purchases.getCustomerInfo();
-    const entitlement = customerInfo.entitlements.active[ENTITLEMENT_PRO];
+    const entitlement = customerInfo.entitlements.active[ENTITLEMENT_PRO]
+                     || customerInfo.entitlements.active[ENTITLEMENT_BASIC];
     return {
       isActive: !!entitlement,
       expirationDate: entitlement?.expirationDate ?? null,
