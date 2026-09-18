@@ -127,12 +127,13 @@ export default function ReportScreen() {
 
     const planIds = planData.map(p => p.id);
 
-    // credit/read 상태는 member_lesson_reports에서 (lesson_plan_id 기준)
+    // credit/read 상태는 member_lesson_reports에서 (lesson_plan_id 기준, sent_to_member=true만)
     const [{ data: reportData }, credit] = await Promise.all([
       supabase
         .from('member_lesson_reports')
-        .select('id, lesson_plan_id, is_read, credit_unlocked')
-        .in('lesson_plan_id', planIds),
+        .select('id, lesson_plan_id, is_read, credit_unlocked, sent_to_member')
+        .in('lesson_plan_id', planIds)
+        .eq('sent_to_member', true),
       getMyCreditInfo(),
     ]);
 
@@ -140,24 +141,27 @@ export default function ReportScreen() {
       (reportData ?? []).map(r => [r.lesson_plan_id, r])
     );
 
-    const merged: CoachReport[] = planData.map(plan => {
-      const report = reportMap.get(plan.id);
-      return {
-        plan_id: plan.id,
-        member_id: plan.member_id,
-        created_at: plan.created_at,
-        summary: plan.summary,
-        improvement_points_raw: plan.improvement_points ?? null,
-        next_goals_raw: plan.next_goals ?? null,
-        court_type: plan.court_type ?? null,
-        session_goals: plan.session_goals ?? null,
-        drill_suggestions: plan.drill_suggestions ?? null,
-        duration_minutes: plan.duration_minutes ?? null,
-        report_id: report?.id ?? null,
-        is_read: report?.is_read ?? false,
-        credit_unlocked: report?.credit_unlocked ?? false,
-      };
-    });
+    // sent_to_member=true 리포트가 있는 plan만 표시
+    const merged: CoachReport[] = planData
+      .filter(plan => reportMap.has(plan.id))
+      .map(plan => {
+        const report = reportMap.get(plan.id);
+        return {
+          plan_id: plan.id,
+          member_id: plan.member_id,
+          created_at: plan.created_at,
+          summary: plan.summary,
+          improvement_points_raw: plan.improvement_points ?? null,
+          next_goals_raw: plan.next_goals ?? null,
+          court_type: plan.court_type ?? null,
+          session_goals: plan.session_goals ?? null,
+          drill_suggestions: plan.drill_suggestions ?? null,
+          duration_minutes: plan.duration_minutes ?? null,
+          report_id: report?.id ?? null,
+          is_read: report?.is_read ?? false,
+          credit_unlocked: report?.credit_unlocked ?? false,
+        };
+      });
 
     setReports(merged);
     setCreditInfo(credit);
