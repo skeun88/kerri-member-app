@@ -305,7 +305,7 @@ export default function HomeScreen() {
             return (
               <View style={styles.journeySection}>
                 <View style={styles.journeySectionHeader}>
-                  <Ionicons name="trail-sign-outline" size={13} color={Colors.primary} />
+                  <Ionicons name="flame-outline" size={20} color={Colors.primary} />
                   <Text style={styles.journeySectionTitle}>나의 코칭 여정</Text>
                 </View>
                 <View style={styles.journeyGrid}>
