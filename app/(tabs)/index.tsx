@@ -11,6 +11,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { Share } from 'react-native';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
+import { HomeSkeleton } from '../../components/Skeleton';
 
 interface MemberInfo {
   id: string; name: string; level: string;
@@ -32,6 +33,9 @@ interface CoachProfile {
   career_details: string | null;
   certifications: string | null;
   specialties: string[] | null;
+  show_coaching_journey: boolean | null;
+  journey_snapshot: { members_count: number; lessons_count: number; reports_count: number } | null;
+  created_at: string | null;
 }
 
 interface UpcomingLesson {
@@ -50,6 +54,7 @@ export default function HomeScreen() {
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkingCode, setLinkingCode] = useState(false);
@@ -98,7 +103,7 @@ export default function HomeScreen() {
     // 코치 프로필
     const { data: cp } = await supabase
       .from('coach_profiles').select(
-        'display_name, avatar_url, center_name, region_city, region_district, coaching_years, bio, career_details, certifications, specialties'
+        'display_name, avatar_url, center_name, region_city, region_district, coaching_years, bio, career_details, certifications, specialties, show_coaching_journey, journey_snapshot, created_at'
       ).eq('coach_id', myMember.coach_id).maybeSingle();
     setCoachProfile(cp ?? null);
 
@@ -127,9 +132,13 @@ export default function HomeScreen() {
       .eq('member_id', myMember.id).neq('status', '납부완료')
       .order('due_date').limit(1);
     setPaymentAlert(payments?.[0] ?? null);
+    setLoading(false);
   }
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useFocusEffect(useCallback(() => {
+    setLoading(true);
+    loadData();
+  }, []));
 
   // Realtime
   useEffect(() => {
@@ -158,6 +167,8 @@ export default function HomeScreen() {
   const greeting = member ? `안녕하세요, ${member.name}님 👋` : '안녕하세요 👋';
   const levelEmoji: Record<string, string> = { '입문': '🌱', '초급': '🎾', '중급': '⭐', '고급': '🔥', '선수': '🏆' };
   const coachInitials = (coachProfile?.display_name ?? '코').charAt(0).toUpperCase();
+
+  if (loading) return <HomeSkeleton />;
 
   return (
     <ScrollView
@@ -284,6 +295,50 @@ export default function HomeScreen() {
               <Text style={styles.scheduleBtnText}>레슨 일정</Text>
             </TouchableOpacity>
           </View>
+
+          {/* 코칭 여정 카드 (공개 시만) */}
+          {coachProfile?.show_coaching_journey && coachProfile.journey_snapshot && (() => {
+            const s = coachProfile.journey_snapshot;
+            const joinedMs = coachProfile.created_at
+              ? Math.floor((Date.now() - new Date(coachProfile.created_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44))
+              : null;
+            return (
+              <View style={styles.journeySection}>
+                <View style={styles.journeySectionHeader}>
+                  <Ionicons name="trail-sign-outline" size={13} color={Colors.primary} />
+                  <Text style={styles.journeySectionTitle}>나의 코칭 여정</Text>
+                </View>
+                <View style={styles.journeyGrid}>
+                  {[
+                    { value: `${s.members_count}명`, label: '함께한 회원' },
+                    { value: `${s.lessons_count.toLocaleString()}회`, label: '진행한 레슨' },
+                    { value: `${s.reports_count}개`, label: '남긴 레슨 기록' },
+                    { value: '—', label: '받은 회원 후기' },
+                  ].map((item, idx) => (
+                    <View
+                      key={item.label}
+                      style={[
+                        styles.journeyCell,
+                        idx % 2 === 0 && styles.journeyCellRight,
+                        idx >= 2 && styles.journeyCellTop,
+                      ]}
+                    >
+                      <Text style={styles.journeyCellValue}>{item.value}</Text>
+                      <Text style={styles.journeyCellLabel}>{item.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                {joinedMs !== null && (
+                  <View style={styles.journeyFooter}>
+                    <Ionicons name="ribbon-outline" size={12} color={Colors.primary} />
+                    <Text style={styles.journeyFooterText}>
+                      {joinedMs > 0 ? `KERRI와 함께한 지 ${joinedMs}개월` : 'KERRI 코칭 여정이 시작됐어요!'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          })()}
         </View>
       )}
 
@@ -641,4 +696,28 @@ const styles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center',
   },
   inviteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // 코칭 여정 카드
+  journeySection: {
+    marginTop: 12, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  journeySectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10,
+  },
+  journeySectionTitle: { fontSize: 13, fontWeight: '700', color: Colors.primary },
+  journeyGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  journeyCell: {
+    width: '50%', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center',
+  },
+  journeyCellRight: { borderRightWidth: 1, borderRightColor: Colors.border },
+  journeyCellTop: { borderTopWidth: 1, borderTopColor: Colors.border },
+  journeyCellValue: { fontSize: 18, fontWeight: '800', color: '#3E2B22', marginBottom: 2 },
+  journeyCellLabel: { fontSize: 11, fontWeight: '600', color: Colors.mutedFg, textAlign: 'center' },
+  journeyFooter: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 10, paddingTop: 10,
+    borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  journeyFooterText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
 });
