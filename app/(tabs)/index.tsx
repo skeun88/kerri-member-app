@@ -53,14 +53,22 @@ export default function HomeScreen() {
   const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>([]);
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [hasPendingConsent, setHasPendingConsent] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [linkingCode, setLinkingCode] = useState(false);
+  const [memberName, setMemberName] = useState('');
+  const [memberPhone, setMemberPhone] = useState('');
+  const isConnectCode = inviteCode.length === 8;
 
   async function handleLinkInviteCode() {
     if (!inviteCode.trim()) return;
+    if (isConnectCode) {
+      await handleRequestConnection();
+      return;
+    }
     setLinkingCode(true);
     try {
       const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -86,6 +94,44 @@ export default function HomeScreen() {
       Alert.alert('연결 완료! 🎾', `${data.member_name ?? ''}님, 코치와 연결됐어요!`);
       setInviteCode('');
       await loadData();
+    } catch (e) {
+      Alert.alert('오류', '네트워크 오류가 발생했습니다.');
+    } finally {
+      setLinkingCode(false);
+    }
+  }
+
+  async function handleRequestConnection() {
+    if (!inviteCode.trim() || !memberName.trim() || !memberPhone.trim()) return;
+    setLinkingCode(true);
+    try {
+      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/request-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connect_code: inviteCode.trim().toUpperCase(),
+          name: memberName.trim(),
+          phone: memberPhone.trim(),
+          request_id: crypto.randomUUID(),
+          source: 'connect_code',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'rate_limited') {
+          Alert.alert('요청 제한', '잠시 후 다시 시도해주세요.');
+        } else if (data.error === 'invalid' || data.error === 'invalid_name' || data.error === 'invalid_phone') {
+          Alert.alert('코드 오류', '올바른 연결 코드를 입력해주세요.');
+        } else {
+          Alert.alert('오류', '요청 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
+        }
+        return;
+      }
+      Alert.alert('요청 완료!', '연결 요청이 전송됐어요! 코치가 수락하면 연결됩니다.');
+      setInviteCode('');
+      setMemberName('');
+      setMemberPhone('');
     } catch (e) {
       Alert.alert('오류', '네트워크 오류가 발생했습니다.');
     } finally {
@@ -132,6 +178,28 @@ export default function HomeScreen() {
       .eq('member_id', myMember.id).neq('status', '납부완료')
       .order('due_date').limit(1);
     setPaymentAlert(payments?.[0] ?? null);
+
+    // AI 동의 요청 pending 확인
+    const { data: agreedConsent } = await supabase
+      .from('ai_consents')
+      .select('id')
+      .eq('member_id', myMember.id)
+      .eq('consent_type', 'member')
+      .eq('consent_status', 'agreed')
+      .maybeSingle();
+    if (!agreedConsent) {
+      const { data: pendingConsent } = await supabase
+        .from('ai_consents')
+        .select('id')
+        .eq('member_id', myMember.id)
+        .eq('consent_type', 'member')
+        .eq('consent_status', 'pending')
+        .maybeSingle();
+      setHasPendingConsent(!!pendingConsent);
+    } else {
+      setHasPendingConsent(false);
+    }
+
     setLoading(false);
   }
 
@@ -199,15 +267,37 @@ export default function HomeScreen() {
             style={styles.inviteInput}
             value={inviteCode}
             onChangeText={v => setInviteCode(v.toUpperCase())}
-            placeholder="초대 코드 입력 (예: AB1C2D)"
+            placeholder="초대 코드 입력 (예: AB1C2D 또는 8자리 연결 코드)"
             placeholderTextColor={Colors.placeholder}
             autoCapitalize="characters"
-            maxLength={6}
+            maxLength={8}
           />
+          {isConnectCode && (
+            <>
+              <TextInput
+                style={[styles.inviteInput, { letterSpacing: 0, fontSize: 16, marginTop: 8 }]}
+                value={memberName}
+                onChangeText={setMemberName}
+                placeholder="이름"
+                placeholderTextColor={Colors.placeholder}
+                autoCapitalize="words"
+                maxLength={60}
+              />
+              <TextInput
+                style={[styles.inviteInput, { letterSpacing: 0, fontSize: 16, marginTop: 8 }]}
+                value={memberPhone}
+                onChangeText={setMemberPhone}
+                placeholder="전화번호 (예: 010-1234-5678)"
+                placeholderTextColor={Colors.placeholder}
+                keyboardType="phone-pad"
+                maxLength={32}
+              />
+            </>
+          )}
           <TouchableOpacity
-            style={[styles.inviteBtn, (!inviteCode.trim() || linkingCode) && { opacity: 0.5 }]}
+            style={[styles.inviteBtn, ((!inviteCode.trim() || linkingCode) || (isConnectCode && (!memberName.trim() || !memberPhone.trim()))) && { opacity: 0.5 }]}
             onPress={handleLinkInviteCode}
-            disabled={!inviteCode.trim() || linkingCode}
+            disabled={!inviteCode.trim() || linkingCode || (isConnectCode && (!memberName.trim() || !memberPhone.trim()))}
           >
             {linkingCode
               ? <ActivityIndicator color="#fff" />
@@ -441,6 +531,24 @@ export default function HomeScreen() {
         );
       })()}
 
+      {/* AI 동의 요청 배너 */}
+      {hasPendingConsent && (
+        <TouchableOpacity
+          style={styles.consentBanner}
+          onPress={() => router.push('/consent/ai-consent' as any)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.consentBannerLeft}>
+            <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
+            <View style={{ marginLeft: 10 }}>
+              <Text style={styles.consentBannerTitle}>AI 레슨 기록 동의가 필요해요</Text>
+              <Text style={styles.consentBannerSub}>탭해서 동의하면 코치님의 AI 레슨 기록을 받을 수 있어요</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+        </TouchableOpacity>
+      )}
+
       {/* 결제 알림 배너 */}
       {paymentAlert && (() => {
         const dday = getDDay(paymentAlert.due_date);
@@ -607,6 +715,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   scheduleBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  // ── AI 동의 배너 ───────────────────────────────────────────
+  consentBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.primary + '10',
+    borderRadius: Radius.lg,
+    marginHorizontal: 16, marginBottom: 8, padding: 14,
+    borderWidth: 1.5, borderColor: Colors.primary + '40',
+  },
+  consentBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  consentBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
+  consentBannerSub: { fontSize: 12, color: Colors.primary + 'CC', marginTop: 2 },
 
   // ── 결제 배너 ─────────────────────────────────────────────
   paymentBanner: {
