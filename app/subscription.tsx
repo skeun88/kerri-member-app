@@ -41,7 +41,8 @@ function formatDate(dateStr: string | null | undefined) {
   if (!dateStr) return null;
   try {
     const d = new Date(dateStr);
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    // UTC 기준으로 날짜 추출 (RevenueCat expirationDate는 UTC ISO 문자열)
+    return `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${String(d.getUTCDate()).padStart(2, '0')}`;
   } catch { return null; }
 }
 
@@ -266,6 +267,7 @@ export default function SubscriptionScreen() {
   const [loading, setLoading] = useState(true);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
+  const [willRenew, setWillRenew] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<CurrentPlan>('free');
   const [currentBilling, setCurrentBilling] = useState<BillingCycle>('monthly');
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
@@ -287,6 +289,7 @@ export default function SubscriptionScreen() {
       if (status.isActive && status.customerInfo) {
         const active = status.customerInfo.entitlements.active;
         const entitlement = active['pro'] || active['basic'];
+        setWillRenew(entitlement?.willRenew ?? false);
         if (entitlement?.productIdentifier) {
           const { planKey, billingCycle: bc } = detectPlanFromProductId(entitlement.productIdentifier);
           setCurrentPlan(planKey);
@@ -406,7 +409,11 @@ export default function SubscriptionScreen() {
               <Text style={styles.activeBadgeText}>구독 중</Text>
             </View>
             {expirationDate && (
-              <InfoRow icon="refresh-outline" label="다음 갱신일" value={formatDate(expirationDate) ?? '-'} />
+              <InfoRow
+                icon={willRenew ? 'refresh-outline' : 'calendar-outline'}
+                label={willRenew ? '다음 갱신일' : '만료일'}
+                value={formatDate(expirationDate) ?? '-'}
+              />
             )}
           </View>
         )}

@@ -36,8 +36,9 @@ export async function getSubscriptionStatus(): Promise<{
     const Purchases = getPurchases();
     if (!Purchases) return { isActive: false, expirationDate: null, customerInfo: null };
     const customerInfo = await Purchases.getCustomerInfo();
-    const entitlement = customerInfo.entitlements.active[ENTITLEMENT_PRO]
-                     || customerInfo.entitlements.active[ENTITLEMENT_BASIC];
+    const active = customerInfo.entitlements.active;
+    const entitlement = active[ENTITLEMENT_PRO] ?? active[ENTITLEMENT_BASIC] ?? null;
+    // entitlement.expirationDate: ISO UTC 문자열 (ex. "2026-11-20T00:00:00Z")
     return {
       isActive: !!entitlement,
       expirationDate: entitlement?.expirationDate ?? null,
