@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Radius, Shadow } from '../lib/theme';
-import { getSubscriptionStatus } from '../lib/revenueCat';
+import { getSubscriptionStatus, formatKstDate } from '../lib/revenueCat';
 import { supabase } from '../lib/supabase';
 
 const CREDIT_PRODUCT_ID = 'kerri_credit_4900';
@@ -37,14 +37,6 @@ const PLAN_META = {
   },
 };
 
-function formatDate(dateStr: string | null | undefined) {
-  if (!dateStr) return null;
-  try {
-    const d = new Date(dateStr);
-    // UTC 기준으로 날짜 추출 (RevenueCat expirationDate는 UTC ISO 문자열)
-    return `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${String(d.getUTCDate()).padStart(2, '0')}`;
-  } catch { return null; }
-}
 
 function detectPlanFromProductId(productId: string): { planKey: PlanKey; billingCycle: BillingCycle } {
   const id = productId.toLowerCase();
@@ -266,6 +258,8 @@ export default function SubscriptionScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isTrial, setIsTrial] = useState(false);
+  const [daysLeft, setDaysLeft] = useState(0);
   const [expirationDate, setExpirationDate] = useState<string | null>(null);
   const [willRenew, setWillRenew] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<CurrentPlan>('free');
@@ -284,12 +278,14 @@ export default function SubscriptionScreen() {
       ]);
       setTrialEligible(eligible);
       setIsSubscribed(status.isActive);
+      setIsTrial(status.isTrial);
+      setDaysLeft(status.daysLeft);
       setExpirationDate(status.expirationDate);
+      setWillRenew(status.willRenew);
 
       if (status.isActive && status.customerInfo) {
         const active = status.customerInfo.entitlements.active;
         const entitlement = active['pro'] || active['basic'];
-        setWillRenew(entitlement?.willRenew ?? false);
         if (entitlement?.productIdentifier) {
           const { planKey, billingCycle: bc } = detectPlanFromProductId(entitlement.productIdentifier);
           setCurrentPlan(planKey);
@@ -405,14 +401,36 @@ export default function SubscriptionScreen() {
         {isSubscribed && (
           <View style={styles.activeInfoCard}>
             <View style={styles.activeBadgeRow}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
-              <Text style={styles.activeBadgeText}>구독 중</Text>
+              <Ionicons name="checkmark-circle" size={16} color={isTrial ? Colors.primary : Colors.success} />
+              <Text style={[styles.activeBadgeText, isTrial && { color: Colors.primary }]}>
+                {isTrial
+                  ? daysLeft <= 0
+                    ? '무료체험 오늘 종료'
+                    : daysLeft === 1
+                    ? '무료체험 오늘 종료'
+                    : `무료체험 ${daysLeft}일 남음`
+                  : '구독 중'}
+              </Text>
             </View>
             {expirationDate && (
               <InfoRow
-                icon={willRenew ? 'refresh-outline' : 'calendar-outline'}
-                label={willRenew ? '다음 갱신일' : '만료일'}
-                value={formatDate(expirationDate) ?? '-'}
+                icon={isTrial ? 'time-outline' : willRenew ? 'refresh-outline' : 'calendar-outline'}
+                label={
+                  isTrial
+                    ? '체험 종료일'
+                    : willRenew
+                    ? '다음 갱신일'
+                    : '만료일'
+                }
+                value={formatKstDate(expirationDate) ?? '-'}
+              />
+            )}
+            {/* 자동 갱신 예정: 무료체험 중이고 willRenew=true일 때만 */}
+            {isTrial && willRenew && expirationDate && (
+              <InfoRow
+                icon="refresh-outline"
+                label="자동 결제 예정"
+                value={formatKstDate(expirationDate) ?? '-'}
               />
             )}
           </View>

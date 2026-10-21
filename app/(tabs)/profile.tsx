@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 import { getSubscriptionStatus } from '../../lib/revenueCat';
+import { ProfileSkeleton } from '../../components/Skeleton';
 
 interface MemberProfile {
   id: string; name: string; level: string; phone: string;
@@ -23,10 +24,13 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [email, setEmail] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [totalLessons, setTotalLessons] = useState(0);
   const [attendedLessons, setAttendedLessons] = useState(0);
   const [attendanceDots, setAttendanceDots] = useState<boolean[]>([]);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isTrial, setIsTrial] = useState(false);
+  const [daysLeft, setDaysLeft] = useState(0);
   const [subscriptionLabel, setSubscriptionLabel] = useState('');
 
   const [editModal, setEditModal] = useState(false);
@@ -60,9 +64,24 @@ export default function ProfileScreen() {
     try {
       const subStatus = await getSubscriptionStatus();
       setIsSubscribed(subStatus.isActive);
+      setIsTrial(subStatus.isTrial);
+      setDaysLeft(subStatus.daysLeft);
       if (subStatus.isActive && subStatus.customerInfo) {
         const active = subStatus.customerInfo.entitlements.active;
-        setSubscriptionLabel(active['pro'] ? 'Pro 플랜' : active['basic'] ? 'Basic 플랜' : '구독 중');
+        const planLabel = active['pro'] ? 'Pro 플랜' : active['basic'] ? 'Basic 플랜' : '구독 중';
+        if (subStatus.isTrial) {
+          // 무료체험 중 — 남은 일수를 표시
+          const days = subStatus.daysLeft;
+          if (days <= 0) {
+            setSubscriptionLabel('무료체험 오늘 종료');
+          } else if (days === 1) {
+            setSubscriptionLabel('무료체험 오늘 종료');
+          } else {
+            setSubscriptionLabel(`무료체험 ${days}일 남음`);
+          }
+        } else {
+          setSubscriptionLabel(planLabel);
+        }
       }
     } catch {}
 
@@ -81,14 +100,17 @@ export default function ProfileScreen() {
     if (lessonIds.length > 0) {
       const { data: lessons } = await supabase.from('lessons').select('id, date')
         .in('id', lessonIds).order('date', { ascending: false }).limit(8);
-      // lesson_count만큼 최신 레슨을 출석으로 표시 (근사치)
       const sortedLessons = (lessons ?? []);
       const dots = sortedLessons.map((_, i) => i < attended);
       setAttendanceDots(dots);
     }
+    setLoading(false);
   }
 
-  useFocusEffect(useCallback(() => { loadProfile(); }, []));
+  useFocusEffect(useCallback(() => {
+    setLoading(true);
+    loadProfile();
+  }, []));
 
   async function handleSaveName() {
     if (!profile) return;
@@ -129,6 +151,8 @@ export default function ProfileScreen() {
   const level = profile?.level ?? '입문';
   const initial = (profile?.name ?? email).slice(0, 1).toUpperCase();
   const attendRate = totalLessons > 0 ? Math.round((attendedLessons / totalLessons) * 100) : 0;
+
+  if (loading) return <ProfileSkeleton />;
 
   return (
     <View style={styles.screen}>
@@ -204,7 +228,13 @@ export default function ProfileScreen() {
                   {isSubscribed ? subscriptionLabel || '구독 중' : '구독 플랜 없음'}
                 </Text>
                 <Text style={styles.subCardSub}>
-                  {isSubscribed ? '구독 중' : '플랜 보기'}
+                  {isSubscribed
+                    ? isTrial
+                      ? daysLeft > 0
+                        ? `${daysLeft}일 후 자동 결제`
+                        : '체험 종료 임박'
+                      : '구독 중'
+                    : '플랜 보기'}
                 </Text>
               </View>
             </View>
