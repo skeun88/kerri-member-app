@@ -21,6 +21,7 @@ interface CoachReport {
   member_id: string;
   created_at: string;
   summary: string;
+  achievements: string[];
   improvement_points_raw: string | null;
   next_goals_raw: string | null;
   court_type: string | null;
@@ -103,7 +104,7 @@ export default function ReportScreen() {
     // 코치용 lesson_plans 조회 (뷰 경유, status='completed' + 안전 컬럼만)
     const { data: planData } = await supabase
       .from('member_lesson_plan_view')
-      .select('id, member_id, created_at, summary, improvement_points, next_goals, court_type, session_goals, duration_minutes')
+      .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, duration_minutes')
       .eq('member_id', member.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -142,6 +143,7 @@ export default function ReportScreen() {
           member_id: plan.member_id,
           created_at: plan.created_at,
           summary: plan.summary,
+          achievements: plan.achievements ?? [],
           improvement_points_raw: plan.improvement_points ?? null,
           next_goals_raw: plan.next_goals ?? null,
           court_type: plan.court_type ?? null,
@@ -296,6 +298,7 @@ export default function ReportScreen() {
           <View style={styles.list}>
             {reports.map((report) => {
               const isUnlocked = IS_BETA || report.credit_unlocked;
+              const achievements = report.achievements ?? [];
               const improvements = toLines(report.improvement_points_raw);
               const nextGoals = toLines(report.next_goals_raw);
 
@@ -360,10 +363,23 @@ export default function ReportScreen() {
                         <Text style={styles.summaryText}>{report.summary}</Text>
                       </View>
 
-                      {/* 2. 개선 포인트 */}
+                      {/* 2. 오늘 잘한 점 */}
+                      {achievements.length > 0 && (
+                        <View style={styles.section}>
+                          <Text style={styles.sectionTitle}>오늘 잘한 점</Text>
+                          {achievements.map((item, i) => (
+                            <View key={i} style={styles.listRow}>
+                              <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                              <Text style={styles.listText}>{item}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* 3. 교정 포인트 */}
                       {improvements.length > 0 && (
                         <View style={styles.section}>
-                          <Text style={styles.sectionTitle}>개선 포인트</Text>
+                          <Text style={styles.sectionTitle}>교정 포인트</Text>
                           {improvements.map((item, i) => (
                             <View key={i} style={styles.listRow}>
                               <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
@@ -373,7 +389,7 @@ export default function ReportScreen() {
                         </View>
                       )}
 
-                      {/* 3. 다음 목표 */}
+                      {/* 4. 다음 목표 */}
                       {nextGoals.length > 0 && (
                         <View style={styles.section}>
                           <Text style={styles.sectionTitle}>다음 목표</Text>
