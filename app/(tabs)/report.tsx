@@ -13,15 +13,7 @@ import {
   CHARGE_OPTIONS, REPORT_CREDIT_COST, CreditInfo,
 } from '../../lib/reportCredits';
 import { IS_BETA } from '../../lib/beta';
-
-// DrillSuggestion shape from lesson_plans (Sonnet 생성)
-interface DrillSuggestion {
-  name: string;
-  purpose?: string;
-  method?: string;
-  reps?: string;
-  court_adaptation?: string;
-}
+import { ReportSkeleton } from '../../components/Skeleton';
 
 interface CoachReport {
   // lesson_plans (via member_lesson_plan_view)
@@ -33,7 +25,6 @@ interface CoachReport {
   next_goals_raw: string | null;
   court_type: string | null;
   session_goals: string | null;
-  drill_suggestions: DrillSuggestion[] | null;
   duration_minutes: number | null;
   // member_lesson_reports (credit system)
   report_id: string | null;
@@ -112,7 +103,7 @@ export default function ReportScreen() {
     // 코치용 lesson_plans 조회 (뷰 경유, status='completed' + 안전 컬럼만)
     const { data: planData } = await supabase
       .from('member_lesson_plan_view')
-      .select('id, member_id, created_at, summary, improvement_points, next_goals, court_type, session_goals, drill_suggestions, duration_minutes')
+      .select('id, member_id, created_at, summary, improvement_points, next_goals, court_type, session_goals, duration_minutes')
       .eq('member_id', member.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -155,7 +146,6 @@ export default function ReportScreen() {
           next_goals_raw: plan.next_goals ?? null,
           court_type: plan.court_type ?? null,
           session_goals: plan.session_goals ?? null,
-          drill_suggestions: plan.drill_suggestions ?? null,
           duration_minutes: plan.duration_minutes ?? null,
           report_id: report?.id ?? null,
           is_read: report?.is_read ?? false,
@@ -246,9 +236,7 @@ export default function ReportScreen() {
 
   const unreadCount = reports.filter(r => !r.is_read && (IS_BETA || r.credit_unlocked)).length;
 
-  if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={Colors.primary} /></View>;
-  }
+  if (loading) return <ReportSkeleton />;
 
   return (
     <View style={styles.container}>
@@ -310,7 +298,6 @@ export default function ReportScreen() {
               const isUnlocked = IS_BETA || report.credit_unlocked;
               const improvements = toLines(report.improvement_points_raw);
               const nextGoals = toLines(report.next_goals_raw);
-              const drills = report.drill_suggestions ?? [];
 
               return (
                 <TouchableOpacity
@@ -399,45 +386,6 @@ export default function ReportScreen() {
                         </View>
                       )}
 
-                      {/* 4. 개인 맞춤 연습 플랜 */}
-                      {drills.length > 0 && (
-                        <View style={styles.section}>
-                          <Text style={styles.sectionTitle}>개인 맞춤 연습 플랜</Text>
-                          {drills.map((drill, i) => (
-                            <View key={i} style={styles.drillCard}>
-                              <View style={styles.drillHeader}>
-                                <Text style={styles.drillName}>{drill.name}</Text>
-                              </View>
-                              <View style={styles.drillBody}>
-                                {!!drill.purpose && (
-                                  <View style={styles.drillRow}>
-                                    <Text style={styles.drillLabel}>목적</Text>
-                                    <Text style={styles.drillValue}>{drill.purpose}</Text>
-                                  </View>
-                                )}
-                                {!!drill.method && (
-                                  <View style={styles.drillRow}>
-                                    <Text style={styles.drillLabel}>방법</Text>
-                                    <Text style={styles.drillValue}>{drill.method}</Text>
-                                  </View>
-                                )}
-                                {!!drill.reps && (
-                                  <View style={styles.drillRow}>
-                                    <Text style={styles.drillLabel}>반복</Text>
-                                    <Text style={styles.drillValue}>{drill.reps}</Text>
-                                  </View>
-                                )}
-                                {!!drill.court_adaptation && (
-                                  <View style={styles.drillRow}>
-                                    <Text style={styles.drillLabel}>코트 적용</Text>
-                                    <Text style={styles.drillValue}>{drill.court_adaptation}</Text>
-                                  </View>
-                                )}
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      )}
                     </View>
                   )}
                 </TouchableOpacity>
