@@ -22,8 +22,8 @@ interface CoachReport {
   created_at: string;
   summary: string;
   achievements: string[];
-  improvement_points_raw: string | null;
-  next_goals_raw: string | null;
+  improvement_points_raw: string[] | string | null;
+  next_goals_raw: string[] | string | null;
   court_type: string | null;
   session_goals: string | null;
   duration_minutes: number | null;
@@ -39,8 +39,9 @@ function formatDate(dateStr: string) {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} (${days[d.getDay()]})`;
 }
 
-function toLines(raw: string | null | undefined): string[] {
+function toLines(raw: string[] | string | null | undefined): string[] {
   if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed.filter(Boolean);
