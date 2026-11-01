@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, TextInput, Alert, ActivityIndicator,
-  SafeAreaView,
+  SafeAreaView, Image, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -34,8 +34,12 @@ interface CoachProfile {
   display_name: string | null;
   avatar_url: string | null;
   center_name: string | null;
+  academy_name: string | null;
+  sport: string | null;
   region_city: string | null;
   region_district: string | null;
+  public_slug: string | null;
+  is_public: boolean | null;
 }
 
 interface UpcomingLesson {
@@ -205,7 +209,7 @@ export default function HomeScreen() {
       { count: rCount },
     ] = await Promise.all([
       supabase.from('coach_profiles')
-        .select('display_name, avatar_url, center_name, region_city, region_district')
+        .select('display_name, avatar_url, center_name, academy_name, sport, region_city, region_district, public_slug, is_public')
         .eq('coach_id', myMember.coach_id).maybeSingle(),
       supabase.from('messages').select('id', { count: 'exact', head: true })
         .eq('member_id', myMember.id).eq('sender_type', 'coach').is('read_at', null),
@@ -311,6 +315,19 @@ export default function HomeScreen() {
   const coachInitials = (coachProfile?.display_name ?? '코').charAt(0).toUpperCase();
   const locationStr = [coachProfile?.center_name, coachProfile?.region_city]
     .filter(Boolean).join(' · ') || null;
+  const coachInfoStr = [
+    coachProfile?.center_name ?? coachProfile?.academy_name,
+    coachProfile?.sport,
+    coachProfile?.region_city,
+  ].filter(Boolean).join(' · ') || null;
+
+  function openCoachProfile() {
+    if (coachProfile?.is_public && coachProfile.public_slug) {
+      Linking.openURL(`https://kerri.co.kr/coach/${coachProfile.public_slug}`);
+    } else {
+      Alert.alert('프로필 미공개', '코치님이 아직 프로필을 공개하지 않았어요.');
+    }
+  }
 
   if (loading) {
     return (
@@ -575,19 +592,54 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* ── Message CTA ──────────────────────────────────────── */}
-        {member && (
-          <TouchableOpacity
-            style={styles.msgCta}
-            onPress={() => router.push('/coach-chat')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.msgCtaText}>코치에게 궁금한 점이 있나요?</Text>
-            <View style={styles.msgCtaRight}>
-              <Text style={styles.msgCtaLink}>메시지</Text>
-              <Ionicons name="chevron-forward" size={14} color={TERRA} />
+        {/* ── Coach Card ───────────────────────────────────────── */}
+        {member && coachProfile && (
+          <View style={styles.coachCardSection}>
+            <Text style={styles.coachCardSectionLabel}>담당 코치</Text>
+            <View style={styles.coachCard}>
+              <TouchableOpacity
+                style={styles.coachCardTop}
+                onPress={openCoachProfile}
+                activeOpacity={0.85}
+              >
+                {coachProfile.avatar_url ? (
+                  <Image source={{ uri: coachProfile.avatar_url }} style={styles.coachCardAvatar} />
+                ) : (
+                  <View style={styles.coachCardAvatarFallback}>
+                    <Text style={styles.coachCardAvatarText}>{coachInitials}</Text>
+                  </View>
+                )}
+                <View style={styles.coachCardInfo}>
+                  <Text style={styles.coachCardName}>
+                    {coachProfile.display_name ?? '코치'} 코치
+                  </Text>
+                  {coachInfoStr && (
+                    <Text style={styles.coachCardMeta} numberOfLines={1}>{coachInfoStr}</Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={TEXT_MUTED} />
+              </TouchableOpacity>
+              <View style={styles.coachCardDivider} />
+              <View style={styles.coachCardBtns}>
+                <TouchableOpacity
+                  style={styles.coachCardBtnOutline}
+                  onPress={() => router.push('/coach-chat')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="chatbubble-outline" size={15} color={TERRA} />
+                  <Text style={styles.coachCardBtnOutlineText}>메시지</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.coachCardBtnFill}
+                  onPress={openCoachProfile}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="person-outline" size={15} color="#fff" />
+                  <Text style={styles.coachCardBtnFillText}>프로필 상세 보기</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </TouchableOpacity>
+          </View>
         )}
 
         <View style={{ height: 32 }} />
@@ -757,14 +809,46 @@ const styles = StyleSheet.create({
   coachAvatarText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   coachNameSmall: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
 
-  // Message CTA
-  msgCta: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginHorizontal: 16, marginBottom: 8, padding: 16,
-    backgroundColor: CARD_WHITE, borderRadius: 14,
-    borderWidth: 1, borderColor: DIVIDER,
+  // Coach card
+  coachCardSection: { marginHorizontal: 16, marginBottom: 8 },
+  coachCardSectionLabel: {
+    fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY,
+    marginBottom: 10, paddingHorizontal: 2,
   },
-  msgCtaText: { fontSize: 13, color: TEXT_MUTED },
-  msgCtaRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  msgCtaLink: { fontSize: 13, fontWeight: '700', color: TERRA },
+  coachCard: {
+    backgroundColor: CARD_WHITE, borderRadius: 16,
+    borderWidth: 1, borderColor: DIVIDER, overflow: 'hidden',
+  },
+  coachCardTop: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 16, gap: 12,
+  },
+  coachCardAvatar: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: DIVIDER,
+  },
+  coachCardAvatarFallback: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: TERRA, alignItems: 'center', justifyContent: 'center',
+  },
+  coachCardAvatarText: { fontSize: 20, fontWeight: '800', color: '#fff' },
+  coachCardInfo: { flex: 1, gap: 3 },
+  coachCardName: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  coachCardMeta: { fontSize: 12, color: TEXT_MUTED },
+  coachCardDivider: { height: 1, backgroundColor: DIVIDER, marginHorizontal: 16 },
+  coachCardBtns: {
+    flexDirection: 'row', gap: 10, padding: 14,
+  },
+  coachCardBtnOutline: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 11,
+    borderRadius: 12, borderWidth: 1.5, borderColor: TERRA,
+  },
+  coachCardBtnOutlineText: { fontSize: 13, fontWeight: '700', color: TERRA },
+  coachCardBtnFill: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 11,
+    borderRadius: 12, backgroundColor: TERRA,
+  },
+  coachCardBtnFillText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 });

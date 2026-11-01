@@ -8,6 +8,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Colors, Radius, Shadow } from '../../lib/theme';
+import { ScheduleSkeleton } from '../../components/Skeleton';
 
 type MainTab = 'schedule' | 'makeup' | 'payment' | 'report';
 
@@ -514,11 +515,7 @@ export default function ScheduleScreen() {
     }).join(' · ');
   })();
 
-  if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator color={Colors.primary} size="large" />
-    </View>;
-  }
+  if (loading) return <ScheduleSkeleton />;
 
   return (
     <View style={s.container}>
