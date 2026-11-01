@@ -55,10 +55,10 @@ interface PaymentAlert {
 interface LatestReport {
   plan_id: string;
   created_at: string;
-  summary: string;
-  achievements: string[];
+  lesson_date: string | null;
+  improvement_points_raw: string | string[] | null;
   next_goals_raw: string[] | string | null;
-  court_type: string | null;
+  coach_name: string | null;
 }
 
 interface DateLesson {
@@ -216,6 +216,7 @@ export default function HomeScreen() {
   const [hasPendingConsent, setHasPendingConsent] = useState(false);
   const [reportCount, setReportCount] = useState(0);
   const [latestReport, setLatestReport] = useState<LatestReport | null>(null);
+  const [briefingExpanded, setBriefingExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -307,10 +308,10 @@ export default function HomeScreen() {
       setWeekLessonDates(new Set());
     }
 
-    // Latest report
+    // Latest report (브리핑)
     const { data: planData } = await supabase
       .from('member_lesson_plan_view')
-      .select('id, created_at, summary, achievements, next_goals, court_type')
+      .select('id, created_at, improvement_points, next_goals')
       .eq('member_id', (myMember as MemberInfo).id)
       .order('created_at', { ascending: false })
       .limit(10);
@@ -319,19 +320,20 @@ export default function HomeScreen() {
       const planIds = planData.map((p: any) => p.id);
       const { data: reportRows } = await supabase
         .from('member_lesson_reports')
-        .select('lesson_plan_id')
+        .select('lesson_plan_id, lesson_date')
         .in('lesson_plan_id', planIds)
         .eq('sent_to_member', true);
-      const sentPlanIds = new Set((reportRows ?? []).map((r: any) => r.lesson_plan_id));
-      const latest = planData.find((p: any) => sentPlanIds.has(p.id));
+      const sentReportMap = new Map((reportRows ?? []).map((r: any) => [r.lesson_plan_id, r]));
+      const latest = planData.find((p: any) => sentReportMap.has(p.id));
       if (latest) {
+        const matchedReport = sentReportMap.get(latest.id);
         setLatestReport({
           plan_id: latest.id,
           created_at: latest.created_at,
-          summary: latest.summary,
-          achievements: latest.achievements ?? [],
+          lesson_date: matchedReport?.lesson_date ?? null,
+          improvement_points_raw: latest.improvement_points ?? null,
           next_goals_raw: latest.next_goals ?? null,
-          court_type: latest.court_type ?? null,
+          coach_name: null, // resolved via coachProfile later
         });
       } else {
         setLatestReport(null);
@@ -895,47 +897,91 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── Latest lesson record ─────────────────────────────── */}
-        {member && latestReport && (
-          <TouchableOpacity
-            style={styles.reportSection}
-            onPress={() => router.push('/(tabs)/report')}
-            activeOpacity={0.92}
-          >
-            <Text style={styles.reportSectionTitle}>코치가 전한 레슨 기록</Text>
-            <View style={styles.reportCard}>
-              {latestReport.court_type && (
-                <View style={styles.courtChip}>
-                  <Text style={styles.courtChipText}>{latestReport.court_type}</Text>
-                </View>
-              )}
-              <Text style={styles.reportSummary} numberOfLines={3}>{latestReport.summary}</Text>
-              {latestReport.achievements.length > 0 && (
-                <View style={styles.achieveRow}>
-                  {latestReport.achievements.slice(0, 2).map((a, i) => (
-                    <View key={i} style={styles.achieveChip}>
-                      <Text style={styles.achieveText} numberOfLines={1}>{a}</Text>
+        {/* ── 지난 레슨 브리핑 ─────────────────────────────────── */}
+        {member && latestReport && (() => {
+          const keyPoints = toLines(latestReport.improvement_points_raw);
+          const nextGoals = toLines(latestReport.next_goals_raw);
+          const PREVIEW_COUNT = 2;
+          const showExpand = keyPoints.length > PREVIEW_COUNT;
+          const displayPoints = (briefingExpanded || !showExpand)
+            ? keyPoints : keyPoints.slice(0, PREVIEW_COUNT);
+          const lessonDateLabel = latestReport.lesson_date
+            ? (() => {
+                const d = new Date(latestReport.lesson_date + 'T00:00:00');
+                return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+              })()
+            : (() => {
+                const d = new Date(latestReport.created_at);
+                return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+              })();
+          const coachDisplayName = coachProfile?.display_name ?? '코치';
+          return (
+            <View style={styles.reportSection}>
+              <Text style={styles.reportSectionTitle}>지난 레슨 브리핑</Text>
+              <View style={styles.reportCard}>
+                {/* 카드 상단: 날짜 + 코치 */}
+                <View style={styles.briefingHeader}>
+                  <View style={styles.briefingHeaderLeft}>
+                    <Ionicons name="calendar-outline" size={13} color={TEXT_MUTED} />
+                    <Text style={styles.briefingDateText}>{lessonDateLabel}</Text>
+                  </View>
+                  <View style={styles.briefingHeaderRight}>
+                    <View style={styles.coachAvatar}>
+                      <Text style={styles.coachAvatarText}>{coachInitials}</Text>
                     </View>
-                  ))}
+                    <Text style={styles.coachNameSmall}>{coachDisplayName} 코치</Text>
+                  </View>
                 </View>
-              )}
-              {toLines(latestReport.next_goals_raw).length > 0 && (
-                <View style={styles.nextGoalBox}>
-                  <Text style={styles.nextGoalLabel}>다음 목표</Text>
-                  <Text style={styles.nextGoalText} numberOfLines={2}>
-                    {toLines(latestReport.next_goals_raw)[0]}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.reportFooter}>
-                <View style={styles.coachAvatar}>
-                  <Text style={styles.coachAvatarText}>{coachInitials}</Text>
-                </View>
-                <Text style={styles.coachNameSmall}>{coachProfile?.display_name ?? '코치'}</Text>
+
+                {/* 지난 레슨 핵심 */}
+                {displayPoints.length > 0 && (
+                  <View style={styles.briefingKeySection}>
+                    <Text style={styles.briefingKeyLabel}>지난 레슨 핵심</Text>
+                    {displayPoints.map((pt, i) => (
+                      <View key={i} style={styles.briefingKeyRow}>
+                        <Text style={styles.briefingBullet}>•</Text>
+                        <Text style={styles.briefingKeyText}>{pt}</Text>
+                      </View>
+                    ))}
+                    {showExpand && (
+                      <TouchableOpacity
+                        onPress={() => setBriefingExpanded(prev => !prev)}
+                        style={styles.briefingExpandBtn}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.briefingExpandText}>
+                          {briefingExpanded ? '접기' : `더보기 (${keyPoints.length - PREVIEW_COUNT}개 더)`}
+                        </Text>
+                        <Ionicons
+                          name={briefingExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={12} color={TERRA}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* 다음 레슨 목표 */}
+                {nextGoals.length > 0 && (
+                  <View style={styles.nextGoalBox}>
+                    <Text style={styles.nextGoalLabel}>다음 레슨 목표</Text>
+                    <Text style={styles.nextGoalText}>{nextGoals[0]}</Text>
+                  </View>
+                )}
+
+                {/* 하단 버튼 */}
+                <TouchableOpacity
+                  style={styles.briefingViewBtn}
+                  onPress={() => router.push('/(tabs)/report')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.briefingViewBtnText}>지난 레슨 기록 보기</Text>
+                  <Ionicons name="chevron-forward" size={13} color={TERRA} />
+                </TouchableOpacity>
               </View>
             </View>
-          </TouchableOpacity>
-        )}
+          );
+        })()}
 
         {/* ── Coach Card ───────────────────────────────────────── */}
         {member && coachProfile && (
@@ -1280,30 +1326,51 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_WHITE, borderRadius: 16, padding: 16,
     borderWidth: 1, borderColor: DIVIDER,
   },
-  courtChip: {
-    alignSelf: 'flex-start', backgroundColor: TERRA + '18',
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 10,
+  // 브리핑 헤더
+  briefingHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 14,
+    paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: DIVIDER,
   },
-  courtChipText: { fontSize: 12, fontWeight: '600', color: TERRA },
-  reportSummary: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 22, marginBottom: 10 },
-  achieveRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  achieveChip: {
-    backgroundColor: '#F0FAF0', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4, maxWidth: '48%',
+  briefingHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  briefingHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  briefingDateText: { fontSize: 13, color: TEXT_MUTED, fontWeight: '500' },
+  // 지난 레슨 핵심
+  briefingKeySection: {
+    backgroundColor: '#F3F4F6', borderRadius: 10,
+    padding: 12, marginBottom: 10, gap: 4,
   },
-  achieveText: { fontSize: 12, fontWeight: '600', color: '#3A7D44' },
+  briefingKeyLabel: {
+    fontSize: 11, fontWeight: '700', color: '#6B7280',
+    letterSpacing: 0.3, marginBottom: 6,
+  },
+  briefingKeyRow: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
+  briefingBullet: { fontSize: 13, color: TERRA, lineHeight: 20, marginTop: 1 },
+  briefingKeyText: { fontSize: 13, color: TEXT_PRIMARY, lineHeight: 20, flex: 1 },
+  briefingExpandBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginTop: 6, alignSelf: 'flex-start',
+  },
+  briefingExpandText: { fontSize: 12, fontWeight: '600', color: TERRA },
+  // 다음 레슨 목표
   nextGoalBox: {
     backgroundColor: GOAL_BG, borderRadius: 10,
     padding: 12, marginBottom: 12,
   },
   nextGoalLabel: { fontSize: 11, fontWeight: '700', color: TERRA, marginBottom: 4 },
   nextGoalText: { fontSize: 13, color: TEXT_PRIMARY, lineHeight: 19 },
-  reportFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: DIVIDER },
+  // 하단 버튼
+  briefingViewBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: '#F5F5F5', marginTop: 4,
+  },
+  briefingViewBtnText: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
   coachAvatar: {
-    width: 28, height: 28, borderRadius: 14,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: TERRA, alignItems: 'center', justifyContent: 'center',
   },
-  coachAvatarText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  coachAvatarText: { fontSize: 12, fontWeight: '800', color: '#fff' },
   coachNameSmall: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
 
   // Coach card
