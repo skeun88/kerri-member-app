@@ -471,7 +471,8 @@ export default function HomeScreen() {
     setNotifPopoverVisible(false);
     switch (notif.type) {
       case 'lesson_report': router.push('/(tabs)/report'); break;
-      case 'message': router.push('/coach-chat'); break;
+      case 'message':
+      case 'chat_message': router.push('/coach-chat'); break;
       case 'lesson_reminder':
       case 'lesson_update':
       case 'reregister': router.push('/(tabs)/schedule'); break;
@@ -1019,6 +1020,13 @@ export default function HomeScreen() {
                 >
                   <Ionicons name="chatbubble-outline" size={15} color={TERRA} />
                   <Text style={styles.coachCardBtnOutlineText}>메시지</Text>
+                  {unreadMsgCount > 0 && (
+                    <View style={styles.msgBadge}>
+                      <Text style={styles.msgBadgeText}>
+                        {unreadMsgCount > 99 ? '99+' : String(unreadMsgCount)}
+                      </Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.coachCardBtnFill}
@@ -1409,6 +1417,12 @@ const styles = StyleSheet.create({
     borderRadius: 12, borderWidth: 1.5, borderColor: TERRA,
   },
   coachCardBtnOutlineText: { fontSize: 13, fontWeight: '700', color: TERRA },
+  msgBadge: {
+    backgroundColor: TERRA, borderRadius: 9, minWidth: 18, height: 18,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+    marginLeft: 4,
+  },
+  msgBadgeText: { fontSize: 10, fontWeight: '800', color: '#fff' },
   coachCardBtnFill: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 5, paddingVertical: 11,
