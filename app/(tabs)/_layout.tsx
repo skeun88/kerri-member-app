@@ -1,43 +1,17 @@
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../../lib/theme';
+import MemberTabBar from '../../components/MemberTabBar';
 
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{
-      tabBarActiveTintColor: Colors.primary,
-      tabBarInactiveTintColor: Colors.mutedFg,
-      tabBarStyle: { borderTopWidth: 1, borderTopColor: Colors.border, backgroundColor: Colors.white, paddingBottom: 4 },
-      headerStyle: { backgroundColor: Colors.primary },
-      headerTintColor: Colors.white,
-      headerTitleStyle: { fontWeight: '700' },
-    }}>
-      <Tabs.Screen name="index" options={{
-        title: '홈', tabBarLabel: '홈',
-        tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
-        headerTitle: 'KERRI',
-      }} />
-      <Tabs.Screen name="schedule" options={{
-        title: '내 일정', tabBarLabel: '내 일정',
-        tabBarIcon: ({ color, size }) => <Ionicons name="calendar" size={size} color={color} />,
-        headerTitle: '내 레슨 일정',
-      }} />
-      <Tabs.Screen name="payment" options={{
-        title: '결제', tabBarLabel: '결제',
-        tabBarIcon: ({ color, size }) => <Ionicons name="card" size={size} color={color} />,
-        headerTitle: '결제',
-        href: null,
-      }} />
-      <Tabs.Screen name="report" options={{
-        title: '리포트', tabBarLabel: '리포트',
-        tabBarIcon: ({ color, size }) => <Ionicons name="document-text" size={size} color={color} />,
-        headerShown: false,
-      }} />
-      <Tabs.Screen name="profile" options={{
-        title: '내 정보', tabBarLabel: '내 정보',
-        tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" size={size} color={color} />,
-        headerShown: false,
-      }} />
+    <Tabs
+      tabBar={(props) => <MemberTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
+    >
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="schedule" />
+      <Tabs.Screen name="payment" options={{ href: null }} />
+      <Tabs.Screen name="report" />
+      <Tabs.Screen name="profile" />
     </Tabs>
   );
 }

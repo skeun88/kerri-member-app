@@ -1,18 +1,26 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, TextInput, Alert, ActivityIndicator, Image,
+  RefreshControl, TextInput, Alert, ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import QRCode from 'react-native-qrcode-svg';
-import { Share } from 'react-native';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
-import { Colors, Radius, Shadow } from '../../lib/theme';
-import { HomeSkeleton } from '../../components/Skeleton';
 
+// ── Design tokens ──────────────────────────────────────────────
+const BG = '#F7F7F5';
+const CARD_WHITE = '#FFFFFF';
+const TERRA = '#C0755A';
+const LESSON_CARD_BG = '#F4E5DC';
+const GOAL_BG = '#F8EEE9';
+const TEXT_PRIMARY = '#20242C';
+const TEXT_MUTED = '#667085';
+const DIVIDER = '#E8EBEF';
+const STAT_BG = '#FDFAF8';
+
+// ── Interfaces ─────────────────────────────────────────────────
 interface MemberInfo {
   id: string; name: string; level: string;
   remaining_credits: number; total_credits: number;
@@ -28,14 +36,6 @@ interface CoachProfile {
   center_name: string | null;
   region_city: string | null;
   region_district: string | null;
-  coaching_years: number | null;
-  bio: string | null;
-  career_details: string | null;
-  certifications: string | null;
-  specialties: string[] | null;
-  show_coaching_journey: boolean | null;
-  journey_snapshot: { members_count: number; lessons_count: number; reports_count: number } | null;
-  created_at: string | null;
 }
 
 interface UpcomingLesson {
@@ -46,29 +46,88 @@ interface PaymentAlert {
   id: string; amount: number; paid_amount: number; due_date: string; status: string;
 }
 
+interface LatestReport {
+  plan_id: string;
+  created_at: string;
+  summary: string;
+  achievements: string[];
+  next_goals_raw: string[] | string | null;
+  court_type: string | null;
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+const DOW_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
+function getWeekDates(): Date[] {
+  const today = new Date();
+  const dow = today.getDay(); // 0=Sun
+  const daysFromMon = dow === 0 ? 6 : dow - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysFromMon);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+}
+
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function toLines(raw: string[] | string | null | undefined): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  try {
+    const p = JSON.parse(raw);
+    if (Array.isArray(p)) return p.filter(Boolean);
+  } catch {}
+  return raw.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+function getDDay(dueDateStr: string): { label: string; urgent: boolean } {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDateStr + 'T00:00:00');
+  const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return { label: 'D-Day', urgent: true };
+  if (diff > 0) return { label: `D-${diff}`, urgent: diff <= 3 };
+  return { label: `D+${Math.abs(diff)}`, urgent: true };
+}
+
+function formatNextLesson(lesson: UpcomingLesson): string {
+  const d = new Date(lesson.date + 'T00:00:00');
+  const mon = d.getMonth() + 1;
+  const day = d.getDate();
+  const dow = DOW_KR[d.getDay()];
+  const time = lesson.start_time.slice(0, 5);
+  return `${mon}월 ${day}일 (${dow}) ${time}`;
+}
+
+// ── Component ──────────────────────────────────────────────────
 export default function HomeScreen() {
   const router = useRouter();
   const [member, setMember] = useState<MemberInfo | null>(null);
   const [coachProfile, setCoachProfile] = useState<CoachProfile | null>(null);
   const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>([]);
+  const [weekLessonDates, setWeekLessonDates] = useState<Set<string>>(new Set());
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [hasPendingConsent, setHasPendingConsent] = useState(false);
+  const [reportCount, setReportCount] = useState(0);
+  const [latestReport, setLatestReport] = useState<LatestReport | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [qrModalVisible, setQrModalVisible] = useState(false);
+
+  // Invite code state
   const [inviteCode, setInviteCode] = useState('');
-  const [linkingCode, setLinkingCode] = useState(false);
   const [memberName, setMemberName] = useState('');
   const [memberPhone, setMemberPhone] = useState('');
+  const [linkingCode, setLinkingCode] = useState(false);
   const isConnectCode = inviteCode.length === 8;
 
   async function handleLinkInviteCode() {
     if (!inviteCode.trim()) return;
-    if (isConnectCode) {
-      await handleRequestConnection();
-      return;
-    }
+    if (isConnectCode) { await handleRequestConnection(); return; }
     setLinkingCode(true);
     try {
       const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -80,11 +139,7 @@ export default function HomeScreen() {
         body: JSON.stringify({ invite_code: code }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        Alert.alert('코드 오류', '올바른 초대 코드를 입력해주세요.');
-        return;
-      }
-      // 세션 교체
+      if (!res.ok) { Alert.alert('코드 오류', '올바른 초대 코드를 입력해주세요.'); return; }
       if (data.session) {
         await supabase.auth.setSession({
           access_token: data.session.access_token,
@@ -94,7 +149,7 @@ export default function HomeScreen() {
       Alert.alert('연결 완료! 🎾', `${data.member_name ?? ''}님, 코치와 연결됐어요!`);
       setInviteCode('');
       await loadData();
-    } catch (e) {
+    } catch {
       Alert.alert('오류', '네트워크 오류가 발생했습니다.');
     } finally {
       setLinkingCode(false);
@@ -119,20 +174,13 @@ export default function HomeScreen() {
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data.error === 'rate_limited') {
-          Alert.alert('요청 제한', '잠시 후 다시 시도해주세요.');
-        } else if (data.error === 'invalid' || data.error === 'invalid_name' || data.error === 'invalid_phone') {
-          Alert.alert('코드 오류', '올바른 연결 코드를 입력해주세요.');
-        } else {
-          Alert.alert('오류', '요청 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
-        }
+        if (data.error === 'rate_limited') Alert.alert('요청 제한', '잠시 후 다시 시도해주세요.');
+        else Alert.alert('코드 오류', '올바른 연결 코드를 입력해주세요.');
         return;
       }
       Alert.alert('요청 완료!', '연결 요청이 전송됐어요! 코치가 수락하면 연결됩니다.');
-      setInviteCode('');
-      setMemberName('');
-      setMemberPhone('');
-    } catch (e) {
+      setInviteCode(''); setMemberName(''); setMemberPhone('');
+    } catch {
       Alert.alert('오류', '네트워크 오류가 발생했습니다.');
     } finally {
       setLinkingCode(false);
@@ -141,61 +189,97 @@ export default function HomeScreen() {
 
   async function loadData() {
     const myMember = await getMyMemberRow();
-    if (!myMember) return;
+    if (!myMember) { setLoading(false); return; }
     setMember(myMember as MemberInfo);
 
     const today = new Date().toISOString().split('T')[0];
+    const weekDates = getWeekDates();
+    const weekStart = toDateStr(weekDates[0]);
+    const weekEnd = toDateStr(weekDates[6]);
 
-    // 코치 프로필
-    const { data: cp } = await supabase
-      .from('coach_profiles').select(
-        'display_name, avatar_url, center_name, region_city, region_district, coaching_years, bio, career_details, certifications, specialties, show_coaching_journey, journey_snapshot, created_at'
-      ).eq('coach_id', myMember.coach_id).maybeSingle();
+    const [
+      { data: cp },
+      { count: msgCount },
+      { data: lm },
+      { data: payments },
+      { count: rCount },
+    ] = await Promise.all([
+      supabase.from('coach_profiles')
+        .select('display_name, avatar_url, center_name, region_city, region_district')
+        .eq('coach_id', myMember.coach_id).maybeSingle(),
+      supabase.from('messages').select('id', { count: 'exact', head: true })
+        .eq('member_id', myMember.id).eq('sender_type', 'coach').is('read_at', null),
+      supabase.from('lesson_members').select('lesson_id').eq('member_id', myMember.id),
+      supabase.from('payments').select('*')
+        .eq('member_id', myMember.id).neq('status', '납부완료')
+        .order('due_date').limit(1),
+      supabase.from('member_lesson_reports').select('*', { count: 'exact', head: true })
+        .eq('member_id', myMember.id).eq('sent_to_member', true),
+    ]);
+
     setCoachProfile(cp ?? null);
+    setUnreadMsgCount(msgCount ?? 0);
+    setPaymentAlert(payments?.[0] ?? null);
+    setReportCount(rCount ?? 0);
 
-    // 안읽은 메시지 수
-    const { count } = await supabase
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('member_id', myMember.id)
-      .eq('sender_type', 'coach')
-      .is('read_at', null);
-    setUnreadMsgCount(count ?? 0);
-
-    // 다가오는 레슨
-    const { data: lm } = await supabase
-      .from('lesson_members').select('lesson_id').eq('member_id', myMember.id);
+    // Upcoming lessons + weekly lesson dates
     const lessonIds = (lm ?? []).map((l: any) => l.lesson_id);
     if (lessonIds.length > 0) {
-      const { data: lessons } = await supabase.from('lessons').select('*')
-        .in('id', lessonIds).gte('date', today)
-        .order('date').order('start_time').limit(3);
-      setUpcomingLessons(lessons ?? []);
+      const [{ data: upcoming }, { data: weekLessons }] = await Promise.all([
+        supabase.from('lessons').select('*')
+          .in('id', lessonIds).gte('date', today)
+          .order('date').order('start_time').limit(3),
+        supabase.from('lessons').select('date')
+          .in('id', lessonIds)
+          .gte('date', weekStart).lte('date', weekEnd),
+      ]);
+      setUpcomingLessons(upcoming ?? []);
+      setWeekLessonDates(new Set((weekLessons ?? []).map((l: any) => l.date)));
+    } else {
+      setUpcomingLessons([]);
+      setWeekLessonDates(new Set());
     }
 
-    // 미납 결제
-    const { data: payments } = await supabase.from('payments').select('*')
-      .eq('member_id', myMember.id).neq('status', '납부완료')
-      .order('due_date').limit(1);
-    setPaymentAlert(payments?.[0] ?? null);
-
-    // AI 동의 요청 pending 확인
-    const { data: agreedConsent } = await supabase
-      .from('ai_consents')
-      .select('id')
+    // Latest report (sent_to_member=true plan)
+    const { data: planData } = await supabase
+      .from('member_lesson_plan_view')
+      .select('id, created_at, summary, achievements, next_goals, court_type')
       .eq('member_id', myMember.id)
-      .eq('consent_type', 'member')
-      .eq('consent_status', 'agreed')
-      .maybeSingle();
-    if (!agreedConsent) {
-      const { data: pendingConsent } = await supabase
-        .from('ai_consents')
-        .select('id')
-        .eq('member_id', myMember.id)
-        .eq('consent_type', 'member')
-        .eq('consent_status', 'pending')
-        .maybeSingle();
-      setHasPendingConsent(!!pendingConsent);
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (planData && planData.length > 0) {
+      const planIds = planData.map((p: any) => p.id);
+      const { data: reportRows } = await supabase
+        .from('member_lesson_reports')
+        .select('lesson_plan_id')
+        .in('lesson_plan_id', planIds)
+        .eq('sent_to_member', true);
+      const sentPlanIds = new Set((reportRows ?? []).map((r: any) => r.lesson_plan_id));
+      const latest = planData.find((p: any) => sentPlanIds.has(p.id));
+      if (latest) {
+        setLatestReport({
+          plan_id: latest.id,
+          created_at: latest.created_at,
+          summary: latest.summary,
+          achievements: latest.achievements ?? [],
+          next_goals_raw: latest.next_goals ?? null,
+          court_type: latest.court_type ?? null,
+        });
+      } else {
+        setLatestReport(null);
+      }
+    } else {
+      setLatestReport(null);
+    }
+
+    // AI consent
+    const { data: agreed } = await supabase.from('ai_consents').select('id')
+      .eq('member_id', myMember.id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
+    if (!agreed) {
+      const { data: pending } = await supabase.from('ai_consents').select('id')
+        .eq('member_id', myMember.id).eq('consent_type', 'member').eq('consent_status', 'pending').maybeSingle();
+      setHasPendingConsent(!!pending);
     } else {
       setHasPendingConsent(false);
     }
@@ -208,7 +292,6 @@ export default function HomeScreen() {
     loadData();
   }, []));
 
-  // Realtime
   useEffect(() => {
     if (!member?.id) return;
     const ch = supabase.channel('home_rt_' + member.id)
@@ -216,628 +299,472 @@ export default function HomeScreen() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lesson_members', filter: `member_id=eq.${member.id}` }, () => loadData())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `member_id=eq.${member.id}` }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `member_id=eq.${member.id}` }, () => loadData())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [member?.id]);
 
-  function getDDay(dueDateStr: string) {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const due = new Date(dueDateStr + 'T00:00:00');
-    const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
-    if (diff === 0) return { label: 'D-Day', urgent: true };
-    if (diff > 0) return { label: `D-${diff}`, urgent: diff <= 3 };
-    return { label: `D+${Math.abs(diff)}`, urgent: true };
+  const weekDates = getWeekDates();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const nextLesson = upcomingLessons[0] ?? null;
+  const coachInitials = (coachProfile?.display_name ?? '코').charAt(0).toUpperCase();
+  const locationStr = [coachProfile?.center_name, coachProfile?.region_city]
+    .filter(Boolean).join(' · ') || null;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={[styles.center, { flex: 1 }]}>
+          <ActivityIndicator color={TERRA} />
+        </View>
+      </SafeAreaView>
+    );
   }
 
-  const greeting = member ? `안녕하세요, ${member.name}님 👋` : '안녕하세요 👋';
-  const levelEmoji: Record<string, string> = { '입문': '🌱', '초급': '🎾', '중급': '⭐', '고급': '🔥', '선수': '🏆' };
-  const coachInitials = (coachProfile?.display_name ?? '코').charAt(0).toUpperCase();
-
-  if (loading) return <HomeSkeleton />;
-
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.primary} />}
-    >
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>{greeting}</Text>
-
-        </View>
-        {member && (
-          <View style={styles.levelBadge}>
-            <Text style={styles.levelEmoji}>{levelEmoji[member.level] ?? '🎾'}</Text>
-            <Text style={styles.levelText}>{member.level}</Text>
-          </View>
-        )}
-      </View>
-
-      {/* 초대 코드 연결 (미연결 상태) */}
-      {!member && (
-        <View style={styles.inviteBox}>
-          <Ionicons name="link-outline" size={32} color={Colors.primary} style={{ marginBottom: 10 }} />
-          <Text style={styles.inviteTitle}>코치가 보낸 초대 코드를 입력해주세요</Text>
-          <Text style={styles.inviteDesc}>코치에게 받은 6자리 초대 코드를 입력하면{'\n'}레슨 정보와 자동으로 연결됩니다</Text>
-          <TextInput
-            style={styles.inviteInput}
-            value={inviteCode}
-            onChangeText={v => setInviteCode(v.toUpperCase())}
-            placeholder="초대 코드 입력 (예: AB1C2D 또는 8자리 연결 코드)"
-            placeholderTextColor={Colors.placeholder}
-            autoCapitalize="characters"
-            maxLength={8}
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }}
+            tintColor={TERRA}
           />
-          {isConnectCode && (
-            <>
-              <TextInput
-                style={[styles.inviteInput, { letterSpacing: 0, fontSize: 16, marginTop: 8 }]}
-                value={memberName}
-                onChangeText={setMemberName}
-                placeholder="이름"
-                placeholderTextColor={Colors.placeholder}
-                autoCapitalize="words"
-                maxLength={60}
-              />
-              <TextInput
-                style={[styles.inviteInput, { letterSpacing: 0, fontSize: 16, marginTop: 8 }]}
-                value={memberPhone}
-                onChangeText={setMemberPhone}
-                placeholder="전화번호 (예: 010-1234-5678)"
-                placeholderTextColor={Colors.placeholder}
-                keyboardType="phone-pad"
-                maxLength={32}
-              />
-            </>
-          )}
+        }
+      >
+        {/* ── KERRI Header ─────────────────────────────────────── */}
+        <View style={styles.appHeader}>
+          <Text style={styles.appLogoText}>KERRI</Text>
           <TouchableOpacity
-            style={[styles.inviteBtn, ((!inviteCode.trim() || linkingCode) || (isConnectCode && (!memberName.trim() || !memberPhone.trim()))) && { opacity: 0.5 }]}
-            onPress={handleLinkInviteCode}
-            disabled={!inviteCode.trim() || linkingCode || (isConnectCode && (!memberName.trim() || !memberPhone.trim()))}
+            onPress={() => router.push('/coach-chat')}
+            style={styles.bellBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            {linkingCode
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.inviteBtnText}>코치와 연결하기</Text>}
+            <Ionicons name="notifications-outline" size={22} color={TEXT_PRIMARY} />
+            {unreadMsgCount > 0 && <View style={styles.bellDot} />}
           </TouchableOpacity>
         </View>
-      )}
 
-      {/* ── 담당 코치 카드 ─────────────────────────────────── */}
-      {member && (
-        <View style={styles.coachCard}>
-          {/* 코치 기본 정보 */}
-          <View style={styles.coachTop}>
-            {/* 아바타 */}
-            <View style={styles.avatarWrap}>
-              {coachProfile?.avatar_url && coachProfile.avatar_url.startsWith('http') ? (
-                <Image source={{ uri: coachProfile.avatar_url }} style={styles.avatarImg} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitial}>{coachInitials}</Text>
-                </View>
-              )}
+        {/* ── Greeting ─────────────────────────────────────────── */}
+        <View style={styles.greetingSection}>
+          <Text style={styles.greetingName}>
+            {member ? `${member.name}님 반가워요 👋` : '안녕하세요 👋'}
+          </Text>
+          <Text style={styles.greetingSub}>오늘도 즐거운 레슨</Text>
+        </View>
 
-            </View>
-
-            {/* 이름 + 경력 + 위치 */}
-            <View style={{ flex: 1 }}>
-              <View style={styles.coachNameRow}>
-                <Text style={styles.coachName}>
-                  {coachProfile?.display_name ?? '담당 코치'}
+        {/* ── Weekly Calendar Strip ─────────────────────────────── */}
+        <View style={styles.calendarStrip}>
+          {weekDates.map((d) => {
+            const ds = toDateStr(d);
+            const isToday = ds === todayStr;
+            const hasLesson = weekLessonDates.has(ds);
+            return (
+              <View key={ds} style={styles.calDay}>
+                <Text style={[styles.calDowLabel, isToday && styles.calDowLabelActive]}>
+                  {DOW_KR[d.getDay()]}
                 </Text>
-                {coachProfile?.coaching_years != null && (
-                  <Text style={styles.coachExp}>경력 {coachProfile.coaching_years}년</Text>
-                )}
-              </View>
-              {(coachProfile?.region_city || coachProfile?.center_name) && (
-                <View style={styles.coachLocRow}>
-                  <Ionicons name="location-outline" size={12} color={Colors.mutedFg} />
-                  <Text style={styles.coachLoc} numberOfLines={1} ellipsizeMode="tail">
-                    {[coachProfile.center_name, coachProfile.region_city, coachProfile.region_district]
-                      .filter(Boolean).join(' · ')}
+                <View style={[styles.calDateCapsule, isToday && styles.calDateCapsuleActive]}>
+                  <Text style={[styles.calDateNum, isToday && styles.calDateNumActive]}>
+                    {d.getDate()}
                   </Text>
                 </View>
-              )}
-
-              {/* 담당 레이블 */}
-              <View style={styles.myCoachBadge}>
-                <Text style={styles.myCoachBadgeText}>담당 코치</Text>
-              </View>
-            </View>
-
-            {/* QR 코드 (80×80) */}
-            {member?.coach_id && (
-              <TouchableOpacity onPress={() => setQrModalVisible(true)} style={styles.qrSmall} activeOpacity={0.8}>
-                <QRCode
-                  value={`kerri://join?coach_id=${member.coach_id}`}
-                  size={68}
-                  color="#D2755A"
-                  backgroundColor="#fff"
-                />
-                <Text style={styles.qrSmallLabel}>탭하면 확대</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* 메시지 + 일정 버튼 */}
-          <View style={styles.coachActions}>
-            <TouchableOpacity
-              style={styles.msgBtn}
-              onPress={() => router.push('/coach-chat')}
-            >
-              <Ionicons name="chatbubble-outline" size={15} color={Colors.primary} />
-              <Text style={styles.msgBtnText}>메시지</Text>
-              {unreadMsgCount > 0 && (
-                <View style={styles.msgBadge}>
-                  <Text style={styles.msgBadgeText}>{unreadMsgCount > 99 ? '99+' : unreadMsgCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.scheduleBtn}
-              onPress={() => router.push('/(tabs)/schedule')}
-            >
-              <Ionicons name="calendar-outline" size={15} color="#fff" />
-              <Text style={styles.scheduleBtnText}>레슨 일정</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 코칭 여정 카드 (공개 시만) */}
-          {coachProfile?.show_coaching_journey && coachProfile.journey_snapshot && (() => {
-            const s = coachProfile.journey_snapshot;
-            const joinedMs = coachProfile.created_at
-              ? Math.floor((Date.now() - new Date(coachProfile.created_at).getTime()) / (1000 * 60 * 60 * 24 * 30.44))
-              : null;
-            return (
-              <View style={styles.journeySection}>
-                <View style={styles.journeySectionHeader}>
-                  <Ionicons name="flame-outline" size={20} color={Colors.primary} />
-                  <Text style={styles.journeySectionTitle}>나의 코칭 여정</Text>
-                </View>
-                <View style={styles.journeyGrid}>
-                  {[
-                    { value: `${s.members_count}명`, label: '함께한 회원' },
-                    { value: `${s.lessons_count.toLocaleString()}회`, label: '진행한 레슨' },
-                    { value: `${s.reports_count}개`, label: '남긴 레슨 기록' },
-                    { value: '—', label: '받은 회원 후기' },
-                  ].map((item, idx) => (
-                    <View
-                      key={item.label}
-                      style={[
-                        styles.journeyCell,
-                        idx % 2 === 0 && styles.journeyCellRight,
-                        idx >= 2 && styles.journeyCellTop,
-                      ]}
-                    >
-                      <Text style={styles.journeyCellValue}>{item.value}</Text>
-                      <Text style={styles.journeyCellLabel}>{item.label}</Text>
-                    </View>
-                  ))}
-                </View>
-                {joinedMs !== null && (
-                  <View style={styles.journeyFooter}>
-                    <Ionicons name="ribbon-outline" size={12} color={Colors.primary} />
-                    <Text style={styles.journeyFooterText}>
-                      {joinedMs > 0 ? `KERRI와 함께한 지 ${joinedMs}개월` : 'KERRI 코칭 여정이 시작됐어요!'}
-                    </Text>
-                  </View>
-                )}
+                <View style={[styles.calDot, hasLesson && styles.calDotActive]} />
               </View>
             );
-          })()}
+          })}
         </View>
-      )}
 
-      {/* QR 전체화면 모달 */}
-      {member?.coach_id && (
-        <Modal visible={qrModalVisible} transparent animationType="fade" onRequestClose={() => setQrModalVisible(false)}>
-          <TouchableOpacity style={styles.qrModalOverlay} activeOpacity={1} onPress={() => setQrModalVisible(false)}>
-            <TouchableOpacity activeOpacity={1} style={styles.qrModalCard} onPress={e => e.stopPropagation()}>
-              <Text style={styles.qrModalTitle}>코치 초대 QR</Text>
-              <Text style={styles.qrModalSub}>지인에게 이 QR을 공유해서{`\n`}코치를 소개해보세요!</Text>
-              <View style={styles.qrModalBox}>
-                <QRCode
-                  value={`kerri-member://qr-onboarding?coach_id=${member.coach_id}`}
-                  size={200}
-                  color="#D2755A"
-                  backgroundColor="#fff"
-                />
-              </View>
-              <TouchableOpacity
-                style={styles.qrShareBtn}
-                onPress={async () => {
-                  try {
-                    await Share.share({
-                      message: `[KERRI 테니스] 코치를 소개해드려요!\n\n📱 KERRI 멤버 앱 설치:\nhttps://apps.apple.com/kr/app/kerri-member/id6783235236\n\n설치 후 앱에서 QR 스캔 또는 코치 초대 코드를 입력해 연결하세요.`,
-                    });
-                  } catch (e) {
-                    // 공유 취소 시 무시
-                  }
-                }}
-              >
-                <Ionicons name="share-outline" size={18} color="#fff" />
-                <Text style={styles.qrShareBtnText}>공유하기</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setQrModalVisible(false)} style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 14, color: Colors.mutedFg }}>닫기</Text>
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
-      )}
-
-      {/* ── 레슨 진행률 카드 ────────────────────────────────── */}
-      {member && (() => {
-        const total = member.total_credits ?? 0;
-        const remaining = member.remaining_credits ?? 0;
-        const done = Math.max(0, total - remaining);
-        const pct = total > 0 ? Math.min(1, done / total) : 0;
-        const DAYS_KR = ['일','월','화','수','목','금','토'];
-        // 고정 스케줄 파싱
-        const scheduleDays: number[] = (member as any).fixed_schedule_days ?? [];
-        const fst = (member as any).fixed_schedule_times;
-        const legacyTime = (member as any).fixed_schedule_time?.slice(0,5);
-        const fixedSchedule: { day: string; time: string }[] = scheduleDays.map(d => {
-          const raw = fst?.[String(d)];
-          const times: string[] = Array.isArray(raw) ? raw : (raw ? [String(raw)] : (legacyTime ? [legacyTime] : []));
-          return { day: DAYS_KR[d], time: times[0] ?? '' };
-        }).filter(s => s.time);
-        return (
-          <View style={styles.progressCard}>
-            {/* 헤더 */}
-            <View style={styles.progressHeader}>
-              <View>
-                <Text style={styles.progressTitle}>레슨 진행률</Text>
-                {(member as any).lesson_package_title && (
-                  <Text style={styles.progressSub}>{(member as any).lesson_package_title}</Text>
-                )}
-              </View>
-              <Text style={styles.progressCount}>
-                <Text style={styles.progressDone}>{done}</Text>/{total}회
-              </Text>
-            </View>
-            {/* 프로그레스 바 */}
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${Math.round(pct * 100)}%` as any }]} />
-            </View>
-            <Text style={styles.progressPct}>{Math.round(pct * 100)}% 완료 · 잔여 {remaining}회</Text>
-            {/* 고정 스케줄 */}
-            {fixedSchedule.length > 0 && (
-              <View style={styles.scheduleBox}>
-                <View style={styles.scheduleBoxHeader}>
-                  <Ionicons name="time-outline" size={13} color={Colors.mutedFg} />
-                  <Text style={styles.scheduleBoxLabel}>고정 레슨 스케줄</Text>
-                </View>
-                <View style={styles.scheduleChips}>
-                  {fixedSchedule.map((s, i) => (
-                    <View key={i} style={styles.scheduleChip}>
-                      <Text style={styles.scheduleChipText}>{s.day}요일 {s.time}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-            {/* 완료 안내 */}
-            {total > 0 && remaining === 0 && (
-              <View style={styles.allDoneBox}>
-                <Text style={styles.allDoneText}>🎉 이번 회차 레슨을 모두 완료했어요!</Text>
-              </View>
-            )}
-          </View>
-        );
-      })()}
-
-      {/* AI 동의 요청 배너 */}
-      {hasPendingConsent && (
-        <TouchableOpacity
-          style={styles.consentBanner}
-          onPress={() => router.push('/consent/ai-consent' as any)}
-          activeOpacity={0.85}
-        >
-          <View style={styles.consentBannerLeft}>
-            <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
-            <View style={{ marginLeft: 10 }}>
-              <Text style={styles.consentBannerTitle}>AI 레슨 기록 동의가 필요해요</Text>
-              <Text style={styles.consentBannerSub}>탭해서 동의하면 코치님의 AI 레슨 기록을 받을 수 있어요</Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-        </TouchableOpacity>
-      )}
-
-      {/* 결제 알림 배너 */}
-      {paymentAlert && (() => {
-        const dday = getDDay(paymentAlert.due_date);
-        return (
+        {/* ── Banners ───────────────────────────────────────────── */}
+        {hasPendingConsent && (
           <TouchableOpacity
-            style={[styles.paymentBanner, dday.urgent && styles.paymentBannerUrgent]}
-            onPress={() => router.push('/(tabs)/schedule')}
+            style={styles.consentBanner}
+            onPress={() => router.push('/consent/ai-consent' as any)}
             activeOpacity={0.85}
           >
-            <View style={styles.paymentBannerLeft}>
-              <Ionicons name="card-outline" size={20} color={dday.urgent ? Colors.destructive : Colors.primary} />
-              <View style={{ marginLeft: 10 }}>
-                <Text style={[styles.paymentBannerTitle, dday.urgent && { color: Colors.destructive }]}>결제 예정</Text>
-                <Text style={styles.paymentBannerSub}>
+            <Ionicons name="sparkles-outline" size={18} color={TERRA} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.bannerTitle}>AI 레슨 기록 동의가 필요해요</Text>
+              <Text style={styles.bannerSub}>탭해서 동의하면 코치님의 AI 레슨 기록을 받을 수 있어요</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={TERRA} />
+          </TouchableOpacity>
+        )}
+
+        {paymentAlert && (() => {
+          const dday = getDDay(paymentAlert.due_date);
+          return (
+            <TouchableOpacity
+              style={[styles.paymentBanner, dday.urgent && styles.paymentBannerUrgent]}
+              onPress={() => router.push('/(tabs)/schedule')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="card-outline" size={18} color={dday.urgent ? '#E53E3E' : TERRA} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[styles.bannerTitle, dday.urgent && { color: '#E53E3E' }]}>결제 예정</Text>
+                <Text style={styles.bannerSub}>
                   {(paymentAlert.amount - paymentAlert.paid_amount).toLocaleString()}원 · 기한 {paymentAlert.due_date}
                 </Text>
               </View>
-            </View>
-            <View style={[styles.ddayBadge, { backgroundColor: dday.urgent ? Colors.destructive : Colors.primary }]}>
-              <Text style={styles.ddayText}>{dday.label}</Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })()}
+              <View style={[styles.ddayBadge, { backgroundColor: dday.urgent ? '#E53E3E' : TERRA }]}>
+                <Text style={styles.ddayText}>{dday.label}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })()}
 
-      {/* 다가오는 레슨 */}
-      {member && (
-        <>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>다가오는 레슨</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/schedule')}>
-              <Text style={styles.seeAll}>전체보기</Text>
+        {/* ── Not connected: invite code ────────────────────────── */}
+        {!member && (
+          <View style={styles.inviteBox}>
+            <Ionicons name="link-outline" size={32} color={TERRA} style={{ marginBottom: 10 }} />
+            <Text style={styles.inviteTitle}>코치가 보낸 초대 코드를 입력해주세요</Text>
+            <Text style={styles.inviteDesc}>코치에게 받은 초대 코드를 입력하면{'\n'}레슨 정보와 자동으로 연결됩니다</Text>
+            <TextInput
+              style={styles.inviteInput}
+              value={inviteCode}
+              onChangeText={v => setInviteCode(v.toUpperCase())}
+              placeholder="초대 코드 입력"
+              placeholderTextColor={TEXT_MUTED}
+              autoCapitalize="characters"
+              maxLength={8}
+            />
+            {isConnectCode && (
+              <>
+                <TextInput
+                  style={[styles.inviteInput, { letterSpacing: 0, fontSize: 16, marginTop: 8 }]}
+                  value={memberName}
+                  onChangeText={setMemberName}
+                  placeholder="이름"
+                  placeholderTextColor={TEXT_MUTED}
+                  autoCapitalize="words"
+                  maxLength={60}
+                />
+                <TextInput
+                  style={[styles.inviteInput, { letterSpacing: 0, fontSize: 16, marginTop: 8 }]}
+                  value={memberPhone}
+                  onChangeText={setMemberPhone}
+                  placeholder="전화번호"
+                  placeholderTextColor={TEXT_MUTED}
+                  keyboardType="phone-pad"
+                  maxLength={32}
+                />
+              </>
+            )}
+            <TouchableOpacity
+              style={[
+                styles.inviteBtn,
+                ((!inviteCode.trim() || linkingCode) ||
+                  (isConnectCode && (!memberName.trim() || !memberPhone.trim()))) && { opacity: 0.5 },
+              ]}
+              onPress={handleLinkInviteCode}
+              disabled={!inviteCode.trim() || linkingCode || (isConnectCode && (!memberName.trim() || !memberPhone.trim()))}
+            >
+              {linkingCode
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.inviteBtnText}>코치와 연결하기</Text>}
             </TouchableOpacity>
           </View>
+        )}
 
-          {upcomingLessons.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="calendar-outline" size={36} color={Colors.iconMuted} />
-              <Text style={styles.emptyText}>예정된 레슨이 없어요</Text>
+        {/* ── Next lesson card (peach) ──────────────────────────── */}
+        {member && nextLesson && (() => {
+          const dday = getDDay(nextLesson.date);
+          return (
+            <View style={styles.nextLessonCard}>
+              <View style={styles.nextLessonTopRow}>
+                <View style={[styles.ddayChip, dday.urgent && styles.ddayChipUrgent]}>
+                  <Text style={[styles.ddayChipText, dday.urgent && styles.ddayChipTextUrgent]}>
+                    {dday.label}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.nextLessonDateTime}>{formatNextLesson(nextLesson)}</Text>
+              <Text style={styles.nextLessonMeta}>
+                {[locationStr, coachProfile?.display_name ? `${coachProfile.display_name} 코치` : null]
+                  .filter(Boolean).join(' · ')}
+              </Text>
+              <TouchableOpacity
+                style={styles.nextLessonBtn}
+                onPress={() => router.push('/(tabs)/schedule')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.nextLessonBtnText}>일정 확인하기</Text>
+              </TouchableOpacity>
             </View>
-          ) : (
-            upcomingLessons.map(lesson => {
-              const d = new Date(lesson.date + 'T00:00:00');
-              const isToday = lesson.date === new Date().toISOString().split('T')[0];
-              return (
-                <TouchableOpacity key={lesson.id} style={[styles.lessonCard, isToday && styles.lessonCardToday]}
-                  onPress={() => router.push(`/(tabs)/schedule?date=${lesson.date}`)}>
-                  <View style={styles.lessonDateBox}>
-                    <Text style={styles.lessonMon}>{d.toLocaleDateString('ko-KR', { month: 'short' })}</Text>
-                    <Text style={styles.lessonDay}>{d.getDate()}</Text>
-                    <Text style={styles.lessonDow}>{'일월화수목금토'[d.getDay()]}</Text>
-                  </View>
-                  <View style={styles.lessonInfo}>
-                    <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                    <Text style={styles.lessonTime}>{lesson.start_time.slice(0,5)} ~ {lesson.end_time.slice(0,5)}</Text>
-                    {isToday && <View style={styles.todayBadge}><Text style={styles.todayBadgeText}>오늘</Text></View>}
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.placeholder} />
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </>
-      )}
+          );
+        })()}
 
-      <View style={{ height: 80 }} />
-    </ScrollView>
+        {/* ── No upcoming lesson ────────────────────────────────── */}
+        {member && !nextLesson && (
+          <View style={styles.noLessonCard}>
+            <Ionicons name="calendar-outline" size={28} color={TEXT_MUTED} />
+            <Text style={styles.noLessonText}>예정된 레슨이 없어요</Text>
+          </View>
+        )}
+
+        {/* ── Stat cards ───────────────────────────────────────── */}
+        {member && (
+          <View style={styles.statRow}>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => router.push('/(tabs)/schedule')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.statValue}>{member.remaining_credits}회</Text>
+              <Text style={styles.statLabel}>남은 레슨</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.statCard}
+              onPress={() => router.push('/(tabs)/report')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.statValue}>{reportCount}개</Text>
+              <Text style={styles.statLabel}>받은 기록</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Latest lesson record ─────────────────────────────── */}
+        {member && latestReport && (
+          <TouchableOpacity
+            style={styles.reportSection}
+            onPress={() => router.push('/(tabs)/report')}
+            activeOpacity={0.92}
+          >
+            <Text style={styles.reportSectionTitle}>코치가 전한 레슨 기록</Text>
+            <View style={styles.reportCard}>
+              {/* court_type chip */}
+              {latestReport.court_type && (
+                <View style={styles.courtChip}>
+                  <Text style={styles.courtChipText}>{latestReport.court_type}</Text>
+                </View>
+              )}
+              {/* summary */}
+              <Text style={styles.reportSummary} numberOfLines={3}>{latestReport.summary}</Text>
+              {/* achievements */}
+              {latestReport.achievements.length > 0 && (
+                <View style={styles.achieveRow}>
+                  {latestReport.achievements.slice(0, 2).map((a, i) => (
+                    <View key={i} style={styles.achieveChip}>
+                      <Text style={styles.achieveText} numberOfLines={1}>{a}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {/* next goals */}
+              {toLines(latestReport.next_goals_raw).length > 0 && (
+                <View style={styles.nextGoalBox}>
+                  <Text style={styles.nextGoalLabel}>다음 목표</Text>
+                  <Text style={styles.nextGoalText} numberOfLines={2}>
+                    {toLines(latestReport.next_goals_raw)[0]}
+                  </Text>
+                </View>
+              )}
+              {/* coach signature */}
+              <View style={styles.reportFooter}>
+                <View style={styles.coachAvatar}>
+                  <Text style={styles.coachAvatarText}>{coachInitials}</Text>
+                </View>
+                <Text style={styles.coachNameSmall}>{coachProfile?.display_name ?? '코치'}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* ── Message CTA ──────────────────────────────────────── */}
+        {member && (
+          <TouchableOpacity
+            style={styles.msgCta}
+            onPress={() => router.push('/coach-chat')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.msgCtaText}>코치에게 궁금한 점이 있나요?</Text>
+            <View style={styles.msgCtaRight}>
+              <Text style={styles.msgCtaLink}>메시지</Text>
+              <Ionicons name="chevron-forward" size={14} color={TERRA} />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  safeArea: { flex: 1, backgroundColor: BG },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 16 },
+  center: { justifyContent: 'center', alignItems: 'center' },
 
-  header: {
-    backgroundColor: Colors.primary, padding: 20, paddingTop: 30, paddingBottom: 24,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+  // Header
+  appHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4,
   },
-  greeting: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  subGreeting: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 3 },
-  levelBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: Radius.full,
-    paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center',
+  appLogoText: {
+    fontSize: 22, fontWeight: '900', color: TERRA, letterSpacing: 2,
   },
-  levelEmoji: { fontSize: 16 },
-  levelText: { fontSize: 13, fontWeight: '700', color: '#fff', marginTop: 2 },
+  bellBtn: { position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  bellDot: {
+    position: 'absolute', top: 4, right: 4,
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: '#E53E3E', borderWidth: 1.5, borderColor: BG,
+  },
 
-  // ── 담당 코치 카드 ──────────────────────────────────────────
-  coachCard: {
-    backgroundColor: '#fff', borderRadius: Radius.xl,
-    margin: 16, marginBottom: 8, padding: 16, ...Shadow.md,
-  },
-  coachTop: { flexDirection: 'row', gap: 14, marginBottom: 12 },
-  avatarWrap: { position: 'relative' },
-  avatarImg: { width: 64, height: 64, borderRadius: 32 },
-  avatarFallback: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarInitial: { fontSize: 26, fontWeight: '900', color: '#fff' },
-  coachBadge: {
-    position: 'absolute', bottom: -2, right: -2,
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: '#F59E0B',
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: '#fff',
-  },
-  coachNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  coachName: { fontSize: 17, fontWeight: '800', color: Colors.primary },
-  coachExp: { fontSize: 14, color: Colors.mutedFg },
-  coachLocRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6, flex: 1 },
-  coachLoc: { fontSize: 14, color: Colors.mutedFg, flexShrink: 1 },
-  myCoachBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.primary + '18', borderRadius: Radius.full,
-    paddingHorizontal: 8, paddingVertical: 3,
-  },
-  myCoachBadgeText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  qrSmall: { alignItems: 'center', padding: 4, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: Colors.border },
-  qrSmallLabel: { fontSize: 9, color: Colors.mutedFg, marginTop: 2 },
-  qrModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  qrModalCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, alignItems: 'center', width: 300 },
-  qrModalTitle: { fontSize: 18, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
-  qrModalSub: { fontSize: 13, color: Colors.mutedFg, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
-  qrModalBox: { padding: 16, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: Colors.border, marginBottom: 20 },
-  qrShareBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
-  qrShareBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  // Greeting
+  greetingSection: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 16 },
+  greetingName: { fontSize: 22, fontWeight: '800', color: TEXT_PRIMARY },
+  greetingSub: { fontSize: 14, color: TEXT_MUTED, marginTop: 3 },
 
-  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  tag: {
-    borderWidth: 1, borderColor: Colors.border,
-    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
+  // Weekly Calendar
+  calendarStrip: {
+    flexDirection: 'row', justifyContent: 'space-around',
+    paddingHorizontal: 12, paddingVertical: 12,
+    backgroundColor: CARD_WHITE, marginHorizontal: 16, borderRadius: 16,
+    marginBottom: 12,
   },
-  tagText: { fontSize: 14, color: Colors.mutedFg },
+  calDay: { alignItems: 'center', gap: 4 },
+  calDowLabel: { fontSize: 11, fontWeight: '600', color: TEXT_MUTED },
+  calDowLabelActive: { color: TERRA },
+  calDateCapsule: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calDateCapsuleActive: { backgroundColor: TERRA },
+  calDateNum: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
+  calDateNumActive: { color: '#FFFFFF' },
+  calDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'transparent' },
+  calDotActive: { backgroundColor: TERRA },
 
-  coachBio: { fontSize: 13, color: Colors.mutedFg, lineHeight: 20, marginBottom: 8 },
-
-  careerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 12 },
-  careerText: { fontSize: 14, color: Colors.primary, lineHeight: 18, flex: 1 },
-
-  coachActions: {
-    flexDirection: 'row', gap: 8,
-    paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border,
-  },
-  msgBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, borderRadius: Radius.md,
-    borderWidth: 1.5, borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '08',
-    position: 'relative',
-  },
-  msgBtnText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  msgBadge: {
-    position: 'absolute', top: -8, right: 8,
-    backgroundColor: Colors.destructive, borderRadius: 10,
-    minWidth: 20, height: 20, paddingHorizontal: 5,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: '#fff',
-  },
-  msgBadgeText: { fontSize: 12, fontWeight: '800', color: '#fff' },
-  scheduleBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
-  },
-  scheduleBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-
-  // ── AI 동의 배너 ───────────────────────────────────────────
+  // Banners
   consentBanner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: Colors.primary + '10',
-    borderRadius: Radius.lg,
-    marginHorizontal: 16, marginBottom: 8, padding: 14,
-    borderWidth: 1.5, borderColor: Colors.primary + '40',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: LESSON_CARD_BG,
+    borderRadius: 12, marginHorizontal: 16, marginBottom: 10, padding: 14,
   },
-  consentBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  consentBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  consentBannerSub: { fontSize: 12, color: Colors.primary + 'CC', marginTop: 2 },
-
-  // ── 결제 배너 ─────────────────────────────────────────────
   paymentBanner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', borderRadius: Radius.lg,
-    marginHorizontal: 16, marginBottom: 8, padding: 14,
-    borderWidth: 1.5, borderColor: Colors.border, ...Shadow.sm,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: CARD_WHITE, borderRadius: 12,
+    marginHorizontal: 16, marginBottom: 10, padding: 14,
+    borderWidth: 1, borderColor: DIVIDER,
   },
-  paymentBannerUrgent: { borderColor: Colors.destructive, backgroundColor: '#fff5f5' },
-  paymentBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  paymentBannerTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  paymentBannerSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 1 },
-  ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 4 },
-  ddayText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  paymentBannerUrgent: { borderColor: '#E53E3E', backgroundColor: '#FFF5F5' },
+  bannerTitle: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
+  bannerSub: { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
+  ddayBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  ddayText: { fontSize: 12, fontWeight: '800', color: '#fff' },
 
-  // ── 레슨 진행률 카드 ────────────────────────────────────
-  progressCard: {
-    backgroundColor: '#fff', borderRadius: Radius.xl,
-    marginHorizontal: 16, marginBottom: 8, padding: 16, ...Shadow.sm,
-  },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary },
-  progressSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
-  progressCount: { fontSize: 13, color: Colors.mutedFg },
-  progressDone: { fontSize: 15, fontWeight: '800', color: Colors.primary },
-  progressBarBg: { height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 6 },
-  progressBarFill: { height: 8, backgroundColor: Colors.primary, borderRadius: 4 },
-  progressPct: { fontSize: 14, color: Colors.mutedFg, marginBottom: 10 },
-  scheduleBox: { backgroundColor: Colors.mutedBg, borderRadius: Radius.md, padding: 10 },
-  scheduleBoxHeader: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
-  scheduleBoxLabel: { fontSize: 14, fontWeight: '600', color: Colors.mutedFg },
-  scheduleChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  scheduleChip: { backgroundColor: '#fff', borderRadius: Radius.md, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: Colors.border },
-  scheduleChipText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
-  allDoneBox: { marginTop: 10, backgroundColor: Colors.primary + '12', borderRadius: Radius.md, padding: 10, alignItems: 'center' },
-  allDoneText: { fontSize: 13, color: Colors.primary, fontWeight: '700' },
-
-  // ── 다가오는 레슨 ─────────────────────────────────────────
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginHorizontal: 16, marginTop: 8, marginBottom: 8,
-  },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.primary },
-  seeAll: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
-  emptyCard: {
-    alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: Radius.lg, marginHorizontal: 16, padding: 32, ...Shadow.sm,
-  },
-  emptyText: { fontSize: 14, color: Colors.placeholder, marginTop: 8 },
-
-  lessonCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: Radius.lg, marginHorizontal: 16, marginBottom: 8, padding: 14, ...Shadow.sm,
-  },
-  lessonCardToday: { backgroundColor: Colors.primary + '10', borderWidth: 1.5, borderColor: Colors.primary },
-  lessonDateBox: { alignItems: 'center', minWidth: 44, marginRight: 14 },
-  lessonMon: { fontSize: 12, color: Colors.mutedFg, fontWeight: '600' },
-  lessonDay: { fontSize: 22, fontWeight: '900', color: Colors.primary },
-  lessonDow: { fontSize: 13, color: Colors.mutedFg, fontWeight: '600' },
-  lessonInfo: { flex: 1 },
-  lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.primary },
-  lessonTime: { fontSize: 13, color: Colors.mutedFg, marginTop: 2 },
-  todayBadge: {
-    marginTop: 4, alignSelf: 'flex-start',
-    backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2,
-  },
-  todayBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-  // ── 초대 코드 ─────────────────────────────────────────────
+  // Invite box
   inviteBox: {
-    margin: 16, backgroundColor: '#fff', borderRadius: 16,
+    margin: 16, backgroundColor: CARD_WHITE, borderRadius: 16,
     padding: 24, alignItems: 'center',
-    borderWidth: 1.5, borderColor: Colors.primary + '40',
-    ...Shadow.sm,
+    borderWidth: 1.5, borderColor: TERRA + '30',
   },
-  inviteTitle: { fontSize: 16, fontWeight: '700', color: Colors.primary, marginBottom: 8, textAlign: 'center' },
-  inviteDesc: { fontSize: 13, color: Colors.mutedFg, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  inviteTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 8, textAlign: 'center' },
+  inviteDesc: { fontSize: 13, color: TEXT_MUTED, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
   inviteInput: {
-    width: '100%', backgroundColor: Colors.mutedBg, borderRadius: 12,
+    width: '100%', backgroundColor: BG, borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 14,
-    fontSize: 20, fontWeight: '800', color: Colors.primary,
+    fontSize: 20, fontWeight: '800', color: TERRA,
     textAlign: 'center', letterSpacing: 4,
-    borderWidth: 1.5, borderColor: Colors.border, marginBottom: 12,
+    borderWidth: 1.5, borderColor: DIVIDER, marginBottom: 12,
   },
   inviteBtn: {
-    width: '100%', backgroundColor: Colors.primary, borderRadius: 12,
+    width: '100%', backgroundColor: TERRA, borderRadius: 12,
     paddingVertical: 14, alignItems: 'center',
   },
   inviteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // 코칭 여정 카드
-  journeySection: {
-    marginTop: 12, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: Colors.border,
+  // Next lesson card (peach)
+  nextLessonCard: {
+    backgroundColor: LESSON_CARD_BG,
+    borderRadius: 20, marginHorizontal: 16, marginBottom: 12, padding: 20,
   },
-  journeySectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 10,
+  nextLessonTopRow: { flexDirection: 'row', marginBottom: 10 },
+  ddayChip: {
+    backgroundColor: TERRA + '20', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 4,
   },
-  journeySectionTitle: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  journeyGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  journeyCell: {
-    width: '50%', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center',
+  ddayChipUrgent: { backgroundColor: '#E53E3E' },
+  ddayChipText: { fontSize: 12, fontWeight: '700', color: TERRA },
+  ddayChipTextUrgent: { color: '#fff' },
+  nextLessonDateTime: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 4 },
+  nextLessonMeta: { fontSize: 13, color: TEXT_MUTED, marginBottom: 16 },
+  nextLessonBtn: {
+    backgroundColor: CARD_WHITE, borderRadius: 12,
+    paddingVertical: 11, alignItems: 'center',
   },
-  journeyCellRight: { borderRightWidth: 1, borderRightColor: Colors.border },
-  journeyCellTop: { borderTopWidth: 1, borderTopColor: Colors.border },
-  journeyCellValue: { fontSize: 18, fontWeight: '800', color: '#3E2B22', marginBottom: 2 },
-  journeyCellLabel: { fontSize: 11, fontWeight: '600', color: Colors.mutedFg, textAlign: 'center' },
-  journeyFooter: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    marginTop: 10, paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: Colors.border,
+  nextLessonBtnText: { fontSize: 14, fontWeight: '700', color: TERRA },
+
+  // No lesson
+  noLessonCard: {
+    backgroundColor: CARD_WHITE, borderRadius: 20,
+    marginHorizontal: 16, marginBottom: 12, padding: 28,
+    alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: DIVIDER,
   },
-  journeyFooterText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
+  noLessonText: { fontSize: 14, color: TEXT_MUTED },
+
+  // Stat cards
+  statRow: { flexDirection: 'row', gap: 12, marginHorizontal: 16, marginBottom: 12 },
+  statCard: {
+    flex: 1, backgroundColor: STAT_BG, borderRadius: 16,
+    padding: 18, alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
+  statValue: { fontSize: 22, fontWeight: '800', color: TERRA },
+  statLabel: { fontSize: 12, fontWeight: '600', color: TEXT_MUTED },
+
+  // Report section
+  reportSection: { marginHorizontal: 16, marginBottom: 12 },
+  reportSectionTitle: {
+    fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY,
+    marginBottom: 10, paddingHorizontal: 2,
+  },
+  reportCard: {
+    backgroundColor: CARD_WHITE, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
+  courtChip: {
+    alignSelf: 'flex-start', backgroundColor: TERRA + '18',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 10,
+  },
+  courtChipText: { fontSize: 12, fontWeight: '600', color: TERRA },
+  reportSummary: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 22, marginBottom: 10 },
+  achieveRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  achieveChip: {
+    backgroundColor: '#F0FAF0', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4, maxWidth: '48%',
+  },
+  achieveText: { fontSize: 12, fontWeight: '600', color: '#3A7D44' },
+  nextGoalBox: {
+    backgroundColor: GOAL_BG, borderRadius: 10,
+    padding: 12, marginBottom: 12,
+  },
+  nextGoalLabel: { fontSize: 11, fontWeight: '700', color: TERRA, marginBottom: 4 },
+  nextGoalText: { fontSize: 13, color: TEXT_PRIMARY, lineHeight: 19 },
+  reportFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 10, borderTopWidth: 1, borderTopColor: DIVIDER },
+  coachAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: TERRA, alignItems: 'center', justifyContent: 'center',
+  },
+  coachAvatarText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  coachNameSmall: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
+
+  // Message CTA
+  msgCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginHorizontal: 16, marginBottom: 8, padding: 16,
+    backgroundColor: CARD_WHITE, borderRadius: 14,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
+  msgCtaText: { fontSize: 13, color: TEXT_MUTED },
+  msgCtaRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  msgCtaLink: { fontSize: 13, fontWeight: '700', color: TERRA },
 });
