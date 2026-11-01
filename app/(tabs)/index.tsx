@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, TextInput, Alert, ActivityIndicator,
-  SafeAreaView, Image, Linking,
+  SafeAreaView, Image, Linking, Modal, Dimensions,
+  TouchableWithoutFeedback, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,6 +20,7 @@ const TEXT_PRIMARY = '#20242C';
 const TEXT_MUTED = '#667085';
 const DIVIDER = '#E8EBEF';
 const STAT_BG = '#FDFAF8';
+const SCREEN_W = Dimensions.get('window').width;
 
 // ── Interfaces ─────────────────────────────────────────────────
 interface MemberInfo {
@@ -59,15 +61,39 @@ interface LatestReport {
   court_type: string | null;
 }
 
+interface DateLesson {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  title: string;
+  location: string | null;
+  attendance_status: string | null;
+}
+
+interface MemberNotification {
+  id: string;
+  title: string;
+  body: string;
+  type: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+interface PopoverAnchor {
+  x: number;   // center x of anchor element
+  y: number;   // bottom y of anchor element
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 const DOW_KR = ['일', '월', '화', '수', '목', '금', '토'];
 
-function getWeekDates(): Date[] {
+function getWeekDatesForOffset(offset: number): Date[] {
   const today = new Date();
-  const dow = today.getDay(); // 0=Sun
+  const dow = today.getDay();
   const daysFromMon = dow === 0 ? 6 : dow - 1;
   const monday = new Date(today);
-  monday.setDate(today.getDate() - daysFromMon);
+  monday.setDate(today.getDate() - daysFromMon + offset * 7);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -77,6 +103,11 @@ function getWeekDates(): Date[] {
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getMonthYearLabel(weekDates: Date[]): string {
+  const mid = weekDates[3];
+  return `${mid.getFullYear()}년 ${mid.getMonth() + 1}월`;
 }
 
 function toLines(raw: string[] | string | null | undefined): string[] {
@@ -98,6 +129,25 @@ function getDDay(dueDateStr: string): { label: string; urgent: boolean } {
   return { label: `D+${Math.abs(diff)}`, urgent: true };
 }
 
+function getLessonDDay(lesson: UpcomingLesson): { label: string; urgent: boolean } {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const lessonDate = new Date(lesson.date + 'T00:00:00');
+  const diff = Math.round((lessonDate.getTime() - today.getTime()) / 86400000);
+  if (diff < 0) return { label: '완료', urgent: false };
+  if (diff === 0) {
+    // check if lesson is currently ongoing
+    const now = new Date();
+    const startParts = lesson.start_time.split(':');
+    const endParts = lesson.end_time.split(':');
+    const startMin = parseInt(startParts[0]) * 60 + parseInt(startParts[1]);
+    const endMin = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    if (nowMin >= startMin && nowMin < endMin) return { label: '진행 중', urgent: true };
+    return { label: '오늘', urgent: true };
+  }
+  return { label: `D-${diff}`, urgent: diff <= 3 };
+}
+
 function formatNextLesson(lesson: UpcomingLesson): string {
   const d = new Date(lesson.date + 'T00:00:00');
   const mon = d.getMonth() + 1;
@@ -107,6 +157,52 @@ function formatNextLesson(lesson: UpcomingLesson): string {
   return `${mon}월 ${day}일 (${dow}) ${time}`;
 }
 
+function formatDateLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${DOW_KR[d.getDay()]}요일`;
+}
+
+function formatTimeRange(start: string, end: string): string {
+  const fmt = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    const ap = h < 12 ? '오전' : '오후';
+    const hh = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${ap} ${hh}:${String(m).padStart(2, '0')}`;
+  };
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function formatAttendanceStatus(status: string | null, date: string): string {
+  if (!status) {
+    const lessonDate = new Date(date + 'T00:00:00');
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (lessonDate >= today) return '출석 확인 전';
+    return '미기록';
+  }
+  const map: Record<string, string> = {
+    attended: '출석',
+    absent: '결석',
+    late: '지각',
+    cancelled: '취소',
+    excused: '공결',
+  };
+  return map[status] ?? status;
+}
+
+function formatNotifTime(isoStr: string): string {
+  const d = new Date(isoStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return '방금';
+  if (diffMin < 60) return `${diffMin}분 전`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}시간 전`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD}일 전`;
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
 // ── Component ──────────────────────────────────────────────────
 export default function HomeScreen() {
   const router = useRouter();
@@ -114,6 +210,7 @@ export default function HomeScreen() {
   const [coachProfile, setCoachProfile] = useState<CoachProfile | null>(null);
   const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>([]);
   const [weekLessonDates, setWeekLessonDates] = useState<Set<string>>(new Set());
+  const [allMemberLessonIds, setAllMemberLessonIds] = useState<string[]>([]);
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [hasPendingConsent, setHasPendingConsent] = useState(false);
@@ -122,6 +219,23 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Calendar state
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  // Date popover state
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [datePopoverVisible, setDatePopoverVisible] = useState(false);
+  const [datePopoverAnchor, setDatePopoverAnchor] = useState<PopoverAnchor | null>(null);
+  const [selectedDateLessons, setSelectedDateLessons] = useState<DateLesson[]>([]);
+  const [selectedDateLoading, setSelectedDateLoading] = useState(false);
+
+  // Notification popover state
+  const [notifPopoverVisible, setNotifPopoverVisible] = useState(false);
+  const [notifPopoverAnchor, setNotifPopoverAnchor] = useState<PopoverAnchor | null>(null);
+  const [notifications, setNotifications] = useState<MemberNotification[]>([]);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
+
   // Invite code state
   const [inviteCode, setInviteCode] = useState('');
   const [memberName, setMemberName] = useState('');
@@ -129,19 +243,263 @@ export default function HomeScreen() {
   const [linkingCode, setLinkingCode] = useState(false);
   const isConnectCode = inviteCode.length === 8;
 
-  async function handleLinkInviteCode() {
-    if (!inviteCode.trim()) return;
-    if (isConnectCode) { await handleRequestConnection(); return; }
-    setLinkingCode(true);
-    try {
-      const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-      const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
-      const code = inviteCode.trim().toUpperCase();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-invite-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
-        body: JSON.stringify({ invite_code: code }),
+  // Refs
+  const bellBtnRef = useRef<View>(null);
+  const dateViewRefs = useRef<{ [key: string]: View | null }>({});
+  const swipeStartX = useRef<number | null>(null);
+  const swipeStartY = useRef<number | null>(null);
+
+  const calendarWeekDates = useMemo(() => getWeekDatesForOffset(weekOffset), [weekOffset]);
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // ── Data loading ────────────────────────────────────────────
+  async function loadData() {
+    const myMember = await getMyMemberRow();
+    if (!myMember) { setLoading(false); return; }
+    setMember(myMember as MemberInfo);
+
+    const today = new Date().toISOString().split('T')[0];
+    const weekDates = getWeekDatesForOffset(weekOffset);
+    const weekStart = toDateStr(weekDates[0]);
+    const weekEnd = toDateStr(weekDates[6]);
+
+    const [
+      { data: cp },
+      { count: msgCount },
+      { data: lm },
+      { data: payments },
+      { count: rCount },
+    ] = await Promise.all([
+      supabase.from('coach_profiles')
+        .select('display_name, avatar_url, center_name, academy_name, sport, region_city, region_district, public_slug, is_public')
+        .eq('coach_id', (myMember as MemberInfo).coach_id).maybeSingle(),
+      supabase.from('messages').select('id', { count: 'exact', head: true })
+        .eq('member_id', (myMember as MemberInfo).id).eq('sender_type', 'coach').is('read_at', null),
+      supabase.from('lesson_members').select('lesson_id').eq('member_id', (myMember as MemberInfo).id),
+      supabase.from('payments').select('*')
+        .eq('member_id', (myMember as MemberInfo).id).neq('status', '납부완료')
+        .order('due_date').limit(1),
+      supabase.from('member_lesson_reports').select('*', { count: 'exact', head: true })
+        .eq('member_id', (myMember as MemberInfo).id).eq('sent_to_member', true),
+    ]);
+
+    setCoachProfile(cp ?? null);
+    setUnreadMsgCount(msgCount ?? 0);
+    setPaymentAlert(payments?.[0] ?? null);
+    setReportCount(rCount ?? 0);
+
+    const lessonIds = (lm ?? []).map((l: any) => l.lesson_id);
+    setAllMemberLessonIds(lessonIds);
+
+    if (lessonIds.length > 0) {
+      const [{ data: upcoming }, { data: weekLessons }] = await Promise.all([
+        supabase.from('lessons').select('*')
+          .in('id', lessonIds).gte('date', today)
+          .order('date').order('start_time').limit(3),
+        supabase.from('lessons').select('date')
+          .in('id', lessonIds)
+          .gte('date', weekStart).lte('date', weekEnd),
+      ]);
+      setUpcomingLessons(upcoming ?? []);
+      setWeekLessonDates(new Set((weekLessons ?? []).map((l: any) => l.date)));
+    } else {
+      setUpcomingLessons([]);
+      setWeekLessonDates(new Set());
+    }
+
+    // Latest report
+    const { data: planData } = await supabase
+      .from('member_lesson_plan_view')
+      .select('id, created_at, summary, achievements, next_goals, court_type')
+      .eq('member_id', (myMember as MemberInfo).id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (planData && planData.length > 0) {
+      const planIds = planData.map((p: any) => p.id);
+      const { data: reportRows } = await supabase
+        .from('member_lesson_reports')
+        .select('lesson_plan_id')
+        .in('lesson_plan_id', planIds)
+        .eq('sent_to_member', true);
+      const sentPlanIds = new Set((reportRows ?? []).map((r: any) => r.lesson_plan_id));
+      const latest = planData.find((p: any) => sentPlanIds.has(p.id));
+      if (latest) {
+        setLatestReport({
+          plan_id: latest.id,
+          created_at: latest.created_at,
+          summary: latest.summary,
+          achievements: latest.achievements ?? [],
+          next_goals_raw: latest.next_goals ?? null,
+          court_type: latest.court_type ?? null,
+        });
+      } else {
+        setLatestReport(null);
+      }
+    } else {
+      setLatestReport(null);
+    }
+
+    // AI consent
+    const { data: agreed } = await supabase.from('ai_consents').select('id')
+      .eq('member_id', (myMember as MemberInfo).id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
+    if (!agreed) {
+      const { data: pending } = await supabase.from('ai_consents').select('id')
+        .eq('member_id', (myMember as MemberInfo).id).eq('consent_type', 'member').eq('consent_status', 'pending').maybeSingle();
+      setHasPendingConsent(!!pending);
+    } else {
+      setHasPendingConsent(false);
+    }
+
+    // Unread notification count (requires RLS policy for members)
+    const { count: notifUnread } = await supabase
+      .from('member_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('member_id', (myMember as MemberInfo).id)
+      .eq('is_read', false);
+    setUnreadNotifCount(notifUnread ?? 0);
+
+    setLoading(false);
+  }
+
+  async function loadWeekLessonDates(lessonIds: string[], offset: number) {
+    if (lessonIds.length === 0) {
+      setWeekLessonDates(new Set());
+      return;
+    }
+    const weekDates = getWeekDatesForOffset(offset);
+    const weekStart = toDateStr(weekDates[0]);
+    const weekEnd = toDateStr(weekDates[6]);
+    const { data } = await supabase.from('lessons').select('date')
+      .in('id', lessonIds)
+      .gte('date', weekStart).lte('date', weekEnd);
+    setWeekLessonDates(new Set((data ?? []).map((l: any) => l.date)));
+  }
+
+  async function loadDateLessons(dateStr: string) {
+    if (!member || allMemberLessonIds.length === 0) {
+      setSelectedDateLessons([]);
+      setSelectedDateLoading(false);
+      return;
+    }
+    setSelectedDateLoading(true);
+    const { data: lessonsData } = await supabase.from('lessons')
+      .select('id, date, start_time, end_time, title, location')
+      .in('id', allMemberLessonIds)
+      .eq('date', dateStr)
+      .order('start_time');
+
+    const lessonIds = (lessonsData ?? []).map((l: any) => l.id);
+    let attendanceMap: Record<string, string> = {};
+
+    if (lessonIds.length > 0) {
+      const { data: attData } = await supabase.from('attendance')
+        .select('lesson_id, status')
+        .in('lesson_id', lessonIds)
+        .eq('member_id', member.id);
+      (attData ?? []).forEach((a: any) => {
+        attendanceMap[a.lesson_id] = a.status;
       });
+    }
+
+    setSelectedDateLessons((lessonsData ?? []).map((l: any) => ({
+      ...l,
+      attendance_status: attendanceMap[l.id] ?? null,
+    })));
+    setSelectedDateLoading(false);
+  }
+
+  async function loadNotifications() {
+    if (!member) return;
+    setNotifLoading(true);
+    const { data } = await supabase.from('member_notifications')
+      .select('id, title, body, type, is_read, created_at')
+      .eq('member_id', member.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setNotifications(data ?? []);
+    setNotifLoading(false);
+  }
+
+  async function markNotifRead(notifId: string) {
+    await supabase.from('member_notifications')
+      .update({ is_read: true })
+      .eq('id', notifId);
+    setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n));
+    setUnreadNotifCount(prev => Math.max(0, prev - 1));
+  }
+
+  // ── Event handlers ──────────────────────────────────────────
+  function handleDateTap(dateStr: string) {
+    if (selectedDate === dateStr && datePopoverVisible) {
+      setDatePopoverVisible(false);
+      setSelectedDate(null);
+      return;
+    }
+    const ref = dateViewRefs.current[dateStr];
+    if (ref) {
+      ref.measure((_fx, _fy, width, height, pageX, pageY) => {
+        setDatePopoverAnchor({ x: pageX + width / 2, y: pageY + height + 4 });
+      });
+    }
+    setSelectedDate(dateStr);
+    setDatePopoverVisible(true);
+    setNotifPopoverVisible(false);
+    loadDateLessons(dateStr);
+  }
+
+  function handleBellTap() {
+    if (notifPopoverVisible) {
+      setNotifPopoverVisible(false);
+      return;
+    }
+    const ref = bellBtnRef.current;
+    if (ref) {
+      ref.measure((_fx, _fy, width, height, pageX, pageY) => {
+        setNotifPopoverAnchor({ x: pageX + width, y: pageY + height + 4 });
+      });
+    }
+    setNotifPopoverVisible(true);
+    setDatePopoverVisible(false);
+    loadNotifications();
+  }
+
+  function handleNotifTap(notif: MemberNotification) {
+    if (!notif.is_read) markNotifRead(notif.id);
+    setNotifPopoverVisible(false);
+    switch (notif.type) {
+      case 'lesson_report': router.push('/(tabs)/report'); break;
+      case 'message': router.push('/coach-chat'); break;
+      case 'lesson_reminder':
+      case 'lesson_update':
+      case 'reregister': router.push('/(tabs)/schedule'); break;
+      case 'payment': router.push('/(tabs)/payment' as any); break;
+      default: break;
+    }
+  }
+
+  function handleCalendarSwipe(startX: number, endX: number, startY: number, endY: number) {
+    const dx = endX - startX;
+    const dy = endY - startY;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      const newOffset = weekOffset + (dx < 0 ? 1 : -1);
+      setWeekOffset(newOffset);
+      if (datePopoverVisible) setDatePopoverVisible(false);
+    }
+  }
+
+  function handleLinkInviteCode() {
+    if (!inviteCode.trim()) return;
+    if (isConnectCode) { handleRequestConnection(); return; }
+    setLinkingCode(true);
+    const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+    const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+    const code = inviteCode.trim().toUpperCase();
+    fetch(`${SUPABASE_URL}/functions/v1/verify-invite-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ invite_code: code }),
+    }).then(async res => {
       const data = await res.json();
       if (!res.ok) { Alert.alert('코드 오류', '올바른 초대 코드를 입력해주세요.'); return; }
       if (data.session) {
@@ -153,11 +511,9 @@ export default function HomeScreen() {
       Alert.alert('연결 완료! 🎾', `${data.member_name ?? ''}님, 코치와 연결됐어요!`);
       setInviteCode('');
       await loadData();
-    } catch {
+    }).catch(() => {
       Alert.alert('오류', '네트워크 오류가 발생했습니다.');
-    } finally {
-      setLinkingCode(false);
-    }
+    }).finally(() => setLinkingCode(false));
   }
 
   async function handleRequestConnection() {
@@ -191,110 +547,26 @@ export default function HomeScreen() {
     }
   }
 
-  async function loadData() {
-    const myMember = await getMyMemberRow();
-    if (!myMember) { setLoading(false); return; }
-    setMember(myMember as MemberInfo);
-
-    const today = new Date().toISOString().split('T')[0];
-    const weekDates = getWeekDates();
-    const weekStart = toDateStr(weekDates[0]);
-    const weekEnd = toDateStr(weekDates[6]);
-
-    const [
-      { data: cp },
-      { count: msgCount },
-      { data: lm },
-      { data: payments },
-      { count: rCount },
-    ] = await Promise.all([
-      supabase.from('coach_profiles')
-        .select('display_name, avatar_url, center_name, academy_name, sport, region_city, region_district, public_slug, is_public')
-        .eq('coach_id', myMember.coach_id).maybeSingle(),
-      supabase.from('messages').select('id', { count: 'exact', head: true })
-        .eq('member_id', myMember.id).eq('sender_type', 'coach').is('read_at', null),
-      supabase.from('lesson_members').select('lesson_id').eq('member_id', myMember.id),
-      supabase.from('payments').select('*')
-        .eq('member_id', myMember.id).neq('status', '납부완료')
-        .order('due_date').limit(1),
-      supabase.from('member_lesson_reports').select('*', { count: 'exact', head: true })
-        .eq('member_id', myMember.id).eq('sent_to_member', true),
-    ]);
-
-    setCoachProfile(cp ?? null);
-    setUnreadMsgCount(msgCount ?? 0);
-    setPaymentAlert(payments?.[0] ?? null);
-    setReportCount(rCount ?? 0);
-
-    // Upcoming lessons + weekly lesson dates
-    const lessonIds = (lm ?? []).map((l: any) => l.lesson_id);
-    if (lessonIds.length > 0) {
-      const [{ data: upcoming }, { data: weekLessons }] = await Promise.all([
-        supabase.from('lessons').select('*')
-          .in('id', lessonIds).gte('date', today)
-          .order('date').order('start_time').limit(3),
-        supabase.from('lessons').select('date')
-          .in('id', lessonIds)
-          .gte('date', weekStart).lte('date', weekEnd),
-      ]);
-      setUpcomingLessons(upcoming ?? []);
-      setWeekLessonDates(new Set((weekLessons ?? []).map((l: any) => l.date)));
+  function openCoachProfile() {
+    if (coachProfile?.is_public && coachProfile.public_slug) {
+      Linking.openURL(`https://kerri.co.kr/coach/${coachProfile.public_slug}`);
     } else {
-      setUpcomingLessons([]);
-      setWeekLessonDates(new Set());
+      Alert.alert('프로필 미공개', '코치님이 아직 프로필을 공개하지 않았어요.');
     }
-
-    // Latest report (sent_to_member=true plan)
-    const { data: planData } = await supabase
-      .from('member_lesson_plan_view')
-      .select('id, created_at, summary, achievements, next_goals, court_type')
-      .eq('member_id', myMember.id)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (planData && planData.length > 0) {
-      const planIds = planData.map((p: any) => p.id);
-      const { data: reportRows } = await supabase
-        .from('member_lesson_reports')
-        .select('lesson_plan_id')
-        .in('lesson_plan_id', planIds)
-        .eq('sent_to_member', true);
-      const sentPlanIds = new Set((reportRows ?? []).map((r: any) => r.lesson_plan_id));
-      const latest = planData.find((p: any) => sentPlanIds.has(p.id));
-      if (latest) {
-        setLatestReport({
-          plan_id: latest.id,
-          created_at: latest.created_at,
-          summary: latest.summary,
-          achievements: latest.achievements ?? [],
-          next_goals_raw: latest.next_goals ?? null,
-          court_type: latest.court_type ?? null,
-        });
-      } else {
-        setLatestReport(null);
-      }
-    } else {
-      setLatestReport(null);
-    }
-
-    // AI consent
-    const { data: agreed } = await supabase.from('ai_consents').select('id')
-      .eq('member_id', myMember.id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
-    if (!agreed) {
-      const { data: pending } = await supabase.from('ai_consents').select('id')
-        .eq('member_id', myMember.id).eq('consent_type', 'member').eq('consent_status', 'pending').maybeSingle();
-      setHasPendingConsent(!!pending);
-    } else {
-      setHasPendingConsent(false);
-    }
-
-    setLoading(false);
   }
 
+  // ── Effects ─────────────────────────────────────────────────
   useFocusEffect(useCallback(() => {
     setLoading(true);
     loadData();
   }, []));
+
+  // Reload weekly lesson dots when navigating weeks
+  useEffect(() => {
+    if (allMemberLessonIds.length > 0) {
+      loadWeekLessonDates(allMemberLessonIds, weekOffset);
+    }
+  }, [weekOffset, allMemberLessonIds]);
 
   useEffect(() => {
     if (!member?.id) return;
@@ -305,12 +577,14 @@ export default function HomeScreen() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lessons', filter: `coach_id=eq.${member.coach_id}` }, () => loadData())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `member_id=eq.${member.id}` }, () => loadData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `member_id=eq.${member.id}` }, () => loadData())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'member_notifications', filter: `member_id=eq.${member.id}` }, () => {
+        setUnreadNotifCount(prev => prev + 1);
+      })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [member?.id]);
 
-  const weekDates = getWeekDates();
-  const todayStr = new Date().toISOString().split('T')[0];
+  // ── Derived ─────────────────────────────────────────────────
   const nextLesson = upcomingLessons[0] ?? null;
   const coachInitials = (coachProfile?.display_name ?? '코').charAt(0).toUpperCase();
   const locationStr = [coachProfile?.center_name, coachProfile?.region_city]
@@ -321,14 +595,29 @@ export default function HomeScreen() {
     coachProfile?.region_city,
   ].filter(Boolean).join(' · ') || null;
 
-  function openCoachProfile() {
-    if (coachProfile?.is_public && coachProfile.public_slug) {
-      Linking.openURL(`https://kerri.co.kr/coach/${coachProfile.public_slug}`);
-    } else {
-      Alert.alert('프로필 미공개', '코치님이 아직 프로필을 공개하지 않았어요.');
-    }
+  const monthYearLabel = getMonthYearLabel(calendarWeekDates);
+
+  // ── Popover helpers ─────────────────────────────────────────
+  function getDatePopoverLeft(anchor: PopoverAnchor): number {
+    const popW = Math.min(SCREEN_W - 32, 260);
+    let left = anchor.x - popW / 2;
+    if (left < 16) left = 16;
+    if (left + popW > SCREEN_W - 16) left = SCREEN_W - 16 - popW;
+    return left;
   }
 
+  function getDatePopoverArrowLeft(anchor: PopoverAnchor, left: number): number {
+    return anchor.x - left - 8;
+  }
+
+  function getNotifPopoverLeft(anchor: PopoverAnchor): number {
+    const popW = Math.min(SCREEN_W - 32, 320);
+    let left = anchor.x - popW;
+    if (left < 16) left = 16;
+    return left;
+  }
+
+  // ── Render ──────────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -356,14 +645,19 @@ export default function HomeScreen() {
         {/* ── KERRI Header ─────────────────────────────────────── */}
         <View style={styles.appHeader}>
           <Text style={styles.appLogoText}>KERRI</Text>
-          <TouchableOpacity
-            onPress={() => router.push('/coach-chat')}
-            style={styles.bellBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          <View
+            ref={bellBtnRef}
+            collapsable={false}
           >
-            <Ionicons name="notifications-outline" size={22} color={TEXT_PRIMARY} />
-            {unreadMsgCount > 0 && <View style={styles.bellDot} />}
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleBellTap}
+              style={styles.bellBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="notifications-outline" size={22} color={TEXT_PRIMARY} />
+              {unreadNotifCount > 0 && <View style={styles.bellDot} />}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── Greeting ─────────────────────────────────────────── */}
@@ -372,28 +666,6 @@ export default function HomeScreen() {
             {member ? `${member.name}님 반가워요 👋` : '안녕하세요 👋'}
           </Text>
           <Text style={styles.greetingSub}>오늘도 즐거운 레슨</Text>
-        </View>
-
-        {/* ── Weekly Calendar Strip ─────────────────────────────── */}
-        <View style={styles.calendarStrip}>
-          {weekDates.map((d) => {
-            const ds = toDateStr(d);
-            const isToday = ds === todayStr;
-            const hasLesson = weekLessonDates.has(ds);
-            return (
-              <View key={ds} style={styles.calDay}>
-                <Text style={[styles.calDowLabel, isToday && styles.calDowLabelActive]}>
-                  {DOW_KR[d.getDay()]}
-                </Text>
-                <View style={[styles.calDateCapsule, isToday && styles.calDateCapsuleActive]}>
-                  <Text style={[styles.calDateNum, isToday && styles.calDateNumActive]}>
-                    {d.getDate()}
-                  </Text>
-                </View>
-                <View style={[styles.calDot, hasLesson && styles.calDotActive]} />
-              </View>
-            );
-          })}
         </View>
 
         {/* ── Banners ───────────────────────────────────────────── */}
@@ -487,9 +759,9 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── Next lesson card (peach) ──────────────────────────── */}
+        {/* ── Next lesson card (ABOVE calendar) ────────────────── */}
         {member && nextLesson && (() => {
-          const dday = getDDay(nextLesson.date);
+          const dday = getLessonDDay(nextLesson);
           return (
             <View style={styles.nextLessonCard}>
               <View style={styles.nextLessonTopRow}>
@@ -515,11 +787,89 @@ export default function HomeScreen() {
           );
         })()}
 
-        {/* ── No upcoming lesson ────────────────────────────────── */}
         {member && !nextLesson && (
           <View style={styles.noLessonCard}>
             <Ionicons name="calendar-outline" size={28} color={TEXT_MUTED} />
             <Text style={styles.noLessonText}>예정된 레슨이 없어요</Text>
+            <Text style={styles.noLessonSub}>새 일정이 등록되면 여기에서 확인할 수 있어요</Text>
+          </View>
+        )}
+
+        {/* ── Swipeable Weekly Calendar ─────────────────────────── */}
+        {member && (
+          <View style={styles.calendarSection}>
+            {/* Month/year header + today button */}
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarMonthLabel}>{monthYearLabel}</Text>
+              {weekOffset !== 0 && (
+                <TouchableOpacity
+                  style={styles.todayBtn}
+                  onPress={() => { setWeekOffset(0); setDatePopoverVisible(false); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.todayBtnText}>오늘</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Calendar strip with swipe */}
+            <View
+              style={styles.calendarStrip}
+              onTouchStart={(e) => {
+                swipeStartX.current = e.nativeEvent.pageX;
+                swipeStartY.current = e.nativeEvent.pageY;
+              }}
+              onTouchEnd={(e) => {
+                if (swipeStartX.current === null || swipeStartY.current === null) return;
+                handleCalendarSwipe(
+                  swipeStartX.current, e.nativeEvent.pageX,
+                  swipeStartY.current, e.nativeEvent.pageY,
+                );
+                swipeStartX.current = null;
+                swipeStartY.current = null;
+              }}
+            >
+              {calendarWeekDates.map((d) => {
+                const ds = toDateStr(d);
+                const isToday = ds === todayStr;
+                const hasLesson = weekLessonDates.has(ds);
+                const isSelected = ds === selectedDate && datePopoverVisible;
+                return (
+                  <TouchableOpacity
+                    key={ds}
+                    style={styles.calDay}
+                    onPress={() => handleDateTap(ds)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.calDowLabel,
+                      isToday && styles.calDowLabelToday,
+                      isSelected && styles.calDowLabelSelected,
+                    ]}>
+                      {DOW_KR[d.getDay()]}
+                    </Text>
+                    <View
+                      ref={ref => { dateViewRefs.current[ds] = ref; }}
+                      collapsable={false}
+                      style={[
+                        styles.calDateCapsule,
+                        isToday && !isSelected && styles.calDateCapsuleToday,
+                        isSelected && styles.calDateCapsuleSelected,
+                      ]}
+                    >
+                      <Text style={[
+                        styles.calDateNum,
+                        isToday && !isSelected && styles.calDateNumToday,
+                        isSelected && styles.calDateNumSelected,
+                      ]}>
+                        {d.getDate()}
+                      </Text>
+                    </View>
+                    <View style={[styles.calDot, hasLesson && styles.calDotActive]} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
 
@@ -554,15 +904,12 @@ export default function HomeScreen() {
           >
             <Text style={styles.reportSectionTitle}>코치가 전한 레슨 기록</Text>
             <View style={styles.reportCard}>
-              {/* court_type chip */}
               {latestReport.court_type && (
                 <View style={styles.courtChip}>
                   <Text style={styles.courtChipText}>{latestReport.court_type}</Text>
                 </View>
               )}
-              {/* summary */}
               <Text style={styles.reportSummary} numberOfLines={3}>{latestReport.summary}</Text>
-              {/* achievements */}
               {latestReport.achievements.length > 0 && (
                 <View style={styles.achieveRow}>
                   {latestReport.achievements.slice(0, 2).map((a, i) => (
@@ -572,7 +919,6 @@ export default function HomeScreen() {
                   ))}
                 </View>
               )}
-              {/* next goals */}
               {toLines(latestReport.next_goals_raw).length > 0 && (
                 <View style={styles.nextGoalBox}>
                   <Text style={styles.nextGoalLabel}>다음 목표</Text>
@@ -581,7 +927,6 @@ export default function HomeScreen() {
                   </Text>
                 </View>
               )}
-              {/* coach signature */}
               <View style={styles.reportFooter}>
                 <View style={styles.coachAvatar}>
                   <Text style={styles.coachAvatarText}>{coachInitials}</Text>
@@ -644,6 +989,139 @@ export default function HomeScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* ── Date Popover ─────────────────────────────────────────── */}
+      <Modal
+        visible={datePopoverVisible && !!datePopoverAnchor}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => setDatePopoverVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setDatePopoverVisible(false)}>
+          <View style={styles.popoverOverlay}>
+            {datePopoverAnchor && (() => {
+              const popW = Math.min(SCREEN_W - 32, 260);
+              const left = getDatePopoverLeft(datePopoverAnchor);
+              const arrowLeft = getDatePopoverArrowLeft(datePopoverAnchor, left);
+              return (
+                <TouchableWithoutFeedback>
+                  <View style={[styles.datePopover, { top: datePopoverAnchor.y, left, width: popW }]}>
+                    {/* Arrow */}
+                    <View style={[styles.popoverArrow, { left: Math.max(8, Math.min(arrowLeft, popW - 24)) }]} />
+
+                    {selectedDateLoading ? (
+                      <View style={styles.popoverLoading}>
+                        <ActivityIndicator size="small" color={TERRA} />
+                      </View>
+                    ) : selectedDate ? (
+                      <>
+                        <Text style={styles.popoverDateLabel}>{formatDateLabel(selectedDate)}</Text>
+                        {selectedDateLessons.length === 0 ? (
+                          <Text style={styles.popoverNoLesson}>
+                            {selectedDate === todayStr ? '오늘은 수업이 없어요' : '이날은 수업이 없어요'}
+                          </Text>
+                        ) : (
+                          <ScrollView style={styles.popoverLessonsScroll} nestedScrollEnabled>
+                            {selectedDateLessons.map((lesson, idx) => {
+                              const attStatus = formatAttendanceStatus(lesson.attendance_status, lesson.date);
+                              const attColor = lesson.attendance_status === 'attended' ? '#3A7D44'
+                                : lesson.attendance_status === 'absent' ? '#E53E3E'
+                                : lesson.attendance_status === 'late' ? '#D97706'
+                                : TEXT_MUTED;
+                              return (
+                                <View key={lesson.id} style={[styles.popoverLessonItem, idx > 0 && styles.popoverLessonDivider]}>
+                                  <Text style={styles.popoverLessonTime}>
+                                    {formatTimeRange(lesson.start_time, lesson.end_time)}
+                                  </Text>
+                                  {coachProfile?.display_name && (
+                                    <Text style={styles.popoverLessonCoach}>
+                                      {coachProfile.display_name} 코치
+                                    </Text>
+                                  )}
+                                  {member && (
+                                    <Text style={styles.popoverLessonCredits}>
+                                      현재 남은 레슨 {member.remaining_credits}회
+                                    </Text>
+                                  )}
+                                  <View style={[styles.popoverAttBadge, { backgroundColor: attColor + '18' }]}>
+                                    <Text style={[styles.popoverAttText, { color: attColor }]}>{attStatus}</Text>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </ScrollView>
+                        )}
+                      </>
+                    ) : null}
+                  </View>
+                </TouchableWithoutFeedback>
+              );
+            })()}
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── Notification Popover ──────────────────────────────────── */}
+      <Modal
+        visible={notifPopoverVisible && !!notifPopoverAnchor}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => setNotifPopoverVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setNotifPopoverVisible(false)}>
+          <View style={styles.popoverOverlay}>
+            {notifPopoverAnchor && (() => {
+              const popW = Math.min(SCREEN_W - 32, 320);
+              const left = getNotifPopoverLeft(notifPopoverAnchor);
+              return (
+                <TouchableWithoutFeedback>
+                  <View style={[styles.notifPopover, { top: notifPopoverAnchor.y, left, width: popW }]}>
+                    {/* Arrow top-right */}
+                    <View style={[styles.popoverArrow, { left: popW - 28 }]} />
+
+                    <View style={styles.notifPopoverHeader}>
+                      <Text style={styles.notifPopoverTitle}>알림</Text>
+                      {unreadNotifCount > 0 && (
+                        <View style={styles.notifBadge}>
+                          <Text style={styles.notifBadgeText}>{unreadNotifCount}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {notifLoading ? (
+                      <View style={styles.popoverLoading}>
+                        <ActivityIndicator size="small" color={TERRA} />
+                      </View>
+                    ) : notifications.length === 0 ? (
+                      <Text style={styles.notifEmpty}>아직 도착한 알림이 없어요</Text>
+                    ) : (
+                      <ScrollView style={styles.notifScroll} nestedScrollEnabled>
+                        {notifications.map((notif, idx) => (
+                          <TouchableOpacity
+                            key={notif.id}
+                            style={[styles.notifItem, idx > 0 && styles.notifItemDivider, !notif.is_read && styles.notifItemUnread]}
+                            onPress={() => handleNotifTap(notif)}
+                            activeOpacity={0.8}
+                          >
+                            {!notif.is_read && <View style={styles.notifUnreadDot} />}
+                            <View style={styles.notifItemContent}>
+                              <Text style={styles.notifItemTitle} numberOfLines={1}>{notif.title}</Text>
+                              <Text style={styles.notifItemBody} numberOfLines={2}>{notif.body}</Text>
+                              <Text style={styles.notifItemTime}>{formatNotifTime(notif.created_at)}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                </TouchableWithoutFeedback>
+              );
+            })()}
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -673,26 +1151,6 @@ const styles = StyleSheet.create({
   greetingSection: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 16 },
   greetingName: { fontSize: 22, fontWeight: '800', color: TEXT_PRIMARY },
   greetingSub: { fontSize: 14, color: TEXT_MUTED, marginTop: 3 },
-
-  // Weekly Calendar
-  calendarStrip: {
-    flexDirection: 'row', justifyContent: 'space-around',
-    paddingHorizontal: 12, paddingVertical: 12,
-    backgroundColor: CARD_WHITE, marginHorizontal: 16, borderRadius: 16,
-    marginBottom: 12,
-  },
-  calDay: { alignItems: 'center', gap: 4 },
-  calDowLabel: { fontSize: 11, fontWeight: '600', color: TEXT_MUTED },
-  calDowLabelActive: { color: TERRA },
-  calDateCapsule: {
-    width: 30, height: 30, borderRadius: 15,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  calDateCapsuleActive: { backgroundColor: TERRA },
-  calDateNum: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
-  calDateNumActive: { color: '#FFFFFF' },
-  calDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'transparent' },
-  calDotActive: { backgroundColor: TERRA },
 
   // Banners
   consentBanner: {
@@ -733,7 +1191,7 @@ const styles = StyleSheet.create({
   },
   inviteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 
-  // Next lesson card (peach)
+  // Next lesson card (peach) — now ABOVE calendar
   nextLessonCard: {
     backgroundColor: LESSON_CARD_BG,
     borderRadius: 20, marginHorizontal: 16, marginBottom: 12, padding: 20,
@@ -761,7 +1219,46 @@ const styles = StyleSheet.create({
     alignItems: 'center', gap: 8,
     borderWidth: 1, borderColor: DIVIDER,
   },
-  noLessonText: { fontSize: 14, color: TEXT_MUTED },
+  noLessonText: { fontSize: 14, fontWeight: '600', color: TEXT_MUTED },
+  noLessonSub: { fontSize: 12, color: TEXT_MUTED, textAlign: 'center' },
+
+  // Calendar section (now below next lesson card)
+  calendarSection: {
+    marginHorizontal: 16, marginBottom: 12,
+  },
+  calendarHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 8, paddingHorizontal: 4,
+  },
+  calendarMonthLabel: {
+    fontSize: 13, fontWeight: '700', color: TEXT_MUTED,
+  },
+  todayBtn: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: TERRA + '18', borderRadius: 8,
+  },
+  todayBtnText: { fontSize: 12, fontWeight: '700', color: TERRA },
+
+  calendarStrip: {
+    flexDirection: 'row', justifyContent: 'space-around',
+    paddingHorizontal: 8, paddingVertical: 12,
+    backgroundColor: CARD_WHITE, borderRadius: 16,
+  },
+  calDay: { alignItems: 'center', gap: 4, flex: 1 },
+  calDowLabel: { fontSize: 11, fontWeight: '600', color: TEXT_MUTED },
+  calDowLabelToday: { color: TERRA },
+  calDowLabelSelected: { color: TERRA },
+  calDateCapsule: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  calDateCapsuleToday: { backgroundColor: TERRA + '20' },
+  calDateCapsuleSelected: { backgroundColor: TERRA },
+  calDateNum: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
+  calDateNumToday: { color: TERRA },
+  calDateNumSelected: { color: '#FFFFFF' },
+  calDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'transparent' },
+  calDotActive: { backgroundColor: TERRA },
 
   // Stat cards
   statRow: { flexDirection: 'row', gap: 12, marginHorizontal: 16, marginBottom: 12 },
@@ -851,4 +1348,106 @@ const styles = StyleSheet.create({
     borderRadius: 12, backgroundColor: TERRA,
   },
   coachCardBtnFillText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+
+  // Popover overlay
+  popoverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+
+  // Date popover
+  datePopover: {
+    position: 'absolute',
+    backgroundColor: CARD_WHITE,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+    maxHeight: 280,
+  },
+  popoverArrow: {
+    position: 'absolute',
+    top: -8,
+    width: 16, height: 16,
+    backgroundColor: CARD_WHITE,
+    transform: [{ rotate: '45deg' }],
+    shadowColor: '#000',
+    shadowOffset: { width: -1, height: -1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    zIndex: -1,
+  },
+  popoverLoading: { paddingVertical: 20, alignItems: 'center' },
+  popoverDateLabel: {
+    fontSize: 13, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 10,
+  },
+  popoverNoLesson: {
+    fontSize: 13, color: TEXT_MUTED, paddingVertical: 4,
+  },
+  popoverLessonsScroll: { maxHeight: 180 },
+  popoverLessonItem: { paddingVertical: 10 },
+  popoverLessonDivider: { borderTopWidth: 1, borderTopColor: DIVIDER },
+  popoverLessonTime: {
+    fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 3,
+  },
+  popoverLessonCoach: {
+    fontSize: 12, color: TEXT_MUTED, marginBottom: 2,
+  },
+  popoverLessonCredits: {
+    fontSize: 12, color: TEXT_MUTED, marginBottom: 6,
+  },
+  popoverAttBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  popoverAttText: { fontSize: 11, fontWeight: '700' },
+
+  // Notification popover
+  notifPopover: {
+    position: 'absolute',
+    backgroundColor: CARD_WHITE,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+    maxHeight: 360,
+    overflow: 'hidden',
+  },
+  notifPopoverHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
+    borderBottomWidth: 1, borderBottomColor: DIVIDER,
+  },
+  notifPopoverTitle: { fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY },
+  notifBadge: {
+    backgroundColor: '#E53E3E', borderRadius: 10,
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+  notifBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  notifEmpty: {
+    fontSize: 13, color: TEXT_MUTED,
+    paddingHorizontal: 16, paddingVertical: 20, textAlign: 'center',
+  },
+  notifScroll: { maxHeight: 280 },
+  notifItem: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingHorizontal: 16, paddingVertical: 12,
+    backgroundColor: CARD_WHITE,
+  },
+  notifItemDivider: { borderTopWidth: 1, borderTopColor: DIVIDER },
+  notifItemUnread: { backgroundColor: LESSON_CARD_BG + '80' },
+  notifUnreadDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: TERRA, marginTop: 5, marginRight: 8, flexShrink: 0,
+  },
+  notifItemContent: { flex: 1 },
+  notifItemTitle: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 2 },
+  notifItemBody: { fontSize: 12, color: TEXT_MUTED, lineHeight: 17, marginBottom: 4 },
+  notifItemTime: { fontSize: 11, color: TEXT_MUTED + 'CC' },
 });
