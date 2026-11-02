@@ -243,7 +243,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
       <CalendarView
         year={calMonth.year} month={calMonth.month}
         selectedDate={selectedDate ?? ''}
-        lessonDates={busyDateSet}
+        lessonDates={new Set<string>()}
         unavailableDows={coachAvailability ? Array.from({ length: 7 }, (_, i) => i).filter(d => !coachAvailability!.days.includes(d)) : undefined}
         onSelectDate={handleDateSelect}
         onPrevMonth={() => setCalMonth(p => {
