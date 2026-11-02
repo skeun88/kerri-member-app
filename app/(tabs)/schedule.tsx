@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, Modal, ActivityIndicator, TextInput,
@@ -29,10 +29,10 @@ type MainTab = 'schedule' | 'makeup' | 'payment' | 'report';
 type LessonAttendanceStatus = 'scheduled' | 'attended' | 'absent' | 'cancelled' | 'pending';
 
 const ATTENDANCE_STATUS_CONFIG: Record<LessonAttendanceStatus, { bg: string; text: string; label: string; dotColor: string }> = {
-  scheduled: { bg: '#FBF2EF', text: TERRA, label: '예정', dotColor: TERRA },
-  attended:  { bg: '#E8F5E9', text: '#2E7D32', label: '출석', dotColor: '#2E7D32' },
-  absent:    { bg: '#FFEBEE', text: '#C62828', label: '결석', dotColor: '#C62828' },
-  cancelled: { bg: '#F5F5F5', text: '#9E9E9E', label: '취소', dotColor: '#9E9E9E' },
+  scheduled: { bg: '#FBF2EF', text: '#C0755A', label: '예정', dotColor: '#C0755A' },
+  attended:  { bg: '#E8F5E9', text: '#3A7A3A', label: '출석', dotColor: '#3A7A3A' },
+  absent:    { bg: '#FFEBEE', text: '#C03030', label: '결석', dotColor: '#C03030' },
+  cancelled: { bg: '#F5F5F5', text: '#9A9A9A', label: '취소', dotColor: '#9A9A9A' },
   pending:   { bg: '#FFF3E0', text: '#F57C00', label: '확인 대기', dotColor: '#F57C00' },
 };
 
@@ -49,11 +49,19 @@ function resolveLessonStatus(
 ): LessonAttendanceStatus {
   if (!attendance || !attendance.status) return 'scheduled';
   const s = attendance.status;
+  // Korean DB values
   if (s === '출석' || s === '지각' || s === '조퇴') return 'attended';
   if (s === '결석') {
     if (attendance.absence_reporter === 'member') return 'pending';
     return 'absent';
   }
+  if (s === '취소') return 'cancelled';
+  // English DB values
+  if (s === 'attended' || s === 'completed') return 'attended';
+  if (s === 'absent' || s === 'missed') return 'absent';
+  if (s === 'cancelled' || s === 'canceled') return 'cancelled';
+  if (s === 'pending') return 'pending';
+  if (s === 'scheduled') return 'scheduled';
   return 'scheduled';
 }
 
@@ -447,6 +455,51 @@ function CalendarView({
   );
 }
 
+function MonthlyLessonSummaryCard({
+  year, month, stats,
+}: {
+  year: number; month: number;
+  stats: { scheduled: number; attended: number; absent: number; cancelled: number };
+}) {
+  const items = [
+    { key: 'scheduled', color: '#C0755A', label: '예정', count: stats.scheduled },
+    { key: 'attended',  color: '#3A7A3A', label: '출석', count: stats.attended  },
+    { key: 'absent',    color: '#C03030', label: '결석', count: stats.absent    },
+    { key: 'cancelled', color: '#9A9A9A', label: '취소', count: stats.cancelled },
+  ];
+  return (
+    <View style={mCard.container}>
+      <Text style={mCard.title}>{year}년 {month + 1}월 레슨 현황</Text>
+      <View style={mCard.statsRow}>
+        {items.map(item => (
+          <View key={item.key} style={mCard.statItem}>
+            <View style={[mCard.dot, { backgroundColor: item.color }]} />
+            <Text style={[mCard.count, { color: item.color }]}>{item.count}</Text>
+            <Text style={mCard.label}>{item.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const mCard = StyleSheet.create({
+  container: {
+    backgroundColor: CARD_WHITE,
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginTop: 12,
+    padding: 16,
+    ...Shadow.sm,
+  },
+  title: { fontSize: 13, fontWeight: '700', color: TEXT_MUTED, marginBottom: 12 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  statItem: { alignItems: 'center', gap: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  count: { fontSize: 22, fontWeight: '900' },
+  label: { fontSize: 12, fontWeight: '600', color: TEXT_MUTED },
+});
+
 const cal = StyleSheet.create({
   container: { backgroundColor: CARD_WHITE, borderRadius: 20, marginHorizontal: 20, marginTop: 16, padding: 16, ...Shadow.sm },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
@@ -654,6 +707,30 @@ export default function ScheduleScreen() {
     if (!lessonStatusColorsMap[l.date]) lessonStatusColorsMap[l.date] = [];
     lessonStatusColorsMap[l.date].push(color);
   });
+
+  const monthlyLessonStats = useMemo(() => {
+    const prefix = `${calMonth.year}-${String(calMonth.month + 1).padStart(2, '0')}`;
+    const monthLessons = lessons.filter(l => l.date.startsWith(prefix));
+    let scheduled = 0, attended = 0, absent = 0, cancelled = 0;
+    monthLessons.forEach(l => {
+      const att = attendanceMap[l.id];
+      const s = att?.status;
+      if (!s) { scheduled++; return; }
+      // Korean: 지각 제외
+      if (s === '지각') return;
+      if (s === '출석' || s === '조퇴') { attended++; return; }
+      if (s === '결석') { if (att?.absence_reporter === 'member') scheduled++; else absent++; return; }
+      if (s === '취소') { cancelled++; return; }
+      // English
+      if (s === 'attended' || s === 'completed') { attended++; return; }
+      if (s === 'absent' || s === 'missed') { absent++; return; }
+      if (s === 'cancelled' || s === 'canceled') { cancelled++; return; }
+      if (s === 'pending') { scheduled++; return; }
+      scheduled++;
+    });
+    return { scheduled, attended, absent, cancelled };
+  }, [lessons, attendanceMap, calMonth]);
+
   const dayLessons = lessons.filter(l => l.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time));
   const totalCredits = member?.total_credits ?? 0;
   const remainingCredits = member?.remaining_credits ?? 0;
@@ -776,6 +853,13 @@ export default function ScheduleScreen() {
                 setSelectedDate(today.startsWith(prefix) ? today : `${prefix}-01`);
                 return { year: newYear, month: newMonth };
               })}
+            />
+
+            {/* 이번 달 레슨 현황 */}
+            <MonthlyLessonSummaryCard
+              year={calMonth.year}
+              month={calMonth.month}
+              stats={monthlyLessonStats}
             />
 
             {/* 선택 날짜 레슨 목록 */}
