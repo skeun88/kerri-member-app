@@ -215,7 +215,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     setBookingModal(false);
     setBookingSlot(null);
     setBookingMsg('');
-    Alert.alert('완료', '코치님께 레슨 예약 요청을 보냈어요! 🎾');
+    Alert.alert('신청 완료', '코치님께 보강 신청을 보냈어요!\n코치가 확인 후 승인/거절 알림을 보내드립니다.');
     loadMyRequests();
   }
 
@@ -223,6 +223,11 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
   return (
     <View>
+      <View style={{ marginHorizontal: 20, marginTop: 16, marginBottom: 4 }}>
+        <Text style={{ fontSize: 14, color: TEXT_MUTED, lineHeight: 20 }}>
+          코치의 빈 시간을 확인하고 원하는 시간에 보강을 신청하세요.
+        </Text>
+      </View>
       <CalendarView
         year={calMonth.year} month={calMonth.month}
         selectedDate={selectedDate ?? ''}
@@ -271,33 +276,52 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
       {myRequests.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>내 예약 요청</Text>
-          {myRequests.slice(0, 5).map(req => (
-            <View key={req.id} style={[s.upcomingCard, {
-              borderLeftWidth: 4,
-              borderLeftColor: req.status === 'pending' ? '#EAB308' : req.status === 'accepted' ? TERRA : '#EF4444',
-            }]}>
-              <View style={s.upcomingInfo}>
-                <Text style={s.upcomingTitle}>{req.requested_date} {req.start_time.slice(0,5)}</Text>
-                <Text style={s.upcomingDate}>{
-                  req.status === 'pending' ? '⏳ 코치 확인 중' :
-                  req.status === 'accepted' ? '✅ 수락됨' : '❌ 거절됨'
-                }</Text>
-                {req.status === 'rejected' && req.reject_message ? (
-                  <Text style={{ fontSize: 14, color: '#EF4444', marginTop: 4, lineHeight: 16 }}>
-                    💬 {req.reject_message}
-                  </Text>
-                ) : null}
+          <Text style={s.sectionTitle}>보강 신청 내역</Text>
+          {myRequests.slice(0, 5).map(req => {
+            const isPending = req.status === 'pending';
+            const isAccepted = req.status === 'accepted';
+            const isRejected = req.status === 'rejected';
+            const isCancelled = req.status === 'cancelled';
+            const badgeColor = isPending ? '#F57C00' : isAccepted ? '#2E7D32' : isCancelled ? '#9E9E9E' : '#C62828';
+            const badgeBg = isPending ? '#FFF3E0' : isAccepted ? '#E8F5E9' : isCancelled ? '#F5F5F5' : '#FFEBEE';
+            const badgeLabel = isPending ? '승인 대기' : isAccepted ? '예약 확정' : isCancelled ? '신청 취소' : '신청 거절';
+            const statusDesc = isPending ? '코치가 신청 내용을 확인하고 있어요.' :
+              isAccepted ? '코치가 승인했어요. 내 일정에 반영됐습니다.' :
+              isCancelled ? '신청이 취소됐어요.' : '코치가 거절했어요.';
+            return (
+              <View key={req.id} style={[s.upcomingCard, { borderLeftColor: badgeColor, borderLeftWidth: 4 }]}>
+                <View style={s.upcomingInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <View style={[s.statusBadge, { backgroundColor: badgeBg }]}>
+                      <Text style={[s.statusBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.upcomingTitle}>{req.requested_date} {req.start_time.slice(0,5)} ~ {req.end_time.slice(0,5)}</Text>
+                  <Text style={[s.upcomingDate, { marginTop: 2 }]}>{statusDesc}</Text>
+                  {isRejected && req.reject_message ? (
+                    <Text style={{ fontSize: 13, color: '#C62828', marginTop: 4, lineHeight: 18 }}>
+                      사유: {req.reject_message}
+                    </Text>
+                  ) : null}
+                  {isPending && (
+                    <TouchableOpacity
+                      style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#F5F5F5' }}
+                      onPress={() => {
+                        Alert.alert('신청 취소', '보강 신청을 취소할까요?', [
+                          { text: '아니요', style: 'cancel' },
+                          { text: '취소하기', style: 'destructive', onPress: async () => {
+                            await supabase.from('lesson_requests').update({ status: 'cancelled' }).eq('id', req.id);
+                            loadMyRequests();
+                          }},
+                        ]);
+                      }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#9E9E9E' }}>신청 취소</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-              <View style={[s.statusBadge, {
-                backgroundColor: req.status === 'pending' ? '#EAB308' : req.status === 'accepted' ? TERRA : '#EF4444'
-              }]}>
-                <Text style={s.statusBadgeText}>{
-                  req.status === 'pending' ? '대기' : req.status === 'accepted' ? '수락' : '거절'
-                }</Text>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
 
@@ -305,7 +329,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
         <View style={s.modalOverlay}>
           <View style={s.modalSheet}>
             <View style={s.modalHandle} />
-            <Text style={s.modalTitle}>레슨 예약 요청</Text>
+            <Text style={s.modalTitle}>보강 신청</Text>
             <Text style={s.modalDate}>
               {selectedDate && new Date(selectedDate+'T00:00:00').toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'long'})}
               {'  '}{bookingSlot} ({lessonDuration}분)
@@ -324,7 +348,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                 <Text style={[s.modalCloseBtnText, { color: TERRA }]}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.modalCloseBtn, { flex: 1 }]} onPress={submitRequest} disabled={sending}>
-                {sending ? <ActivityIndicator color="#fff" /> : <Text style={s.modalCloseBtnText}>예약 요청</Text>}
+                {sending ? <ActivityIndicator color="#fff" /> : <Text style={s.modalCloseBtnText}>보강 신청하기</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -640,7 +664,7 @@ export default function ScheduleScreen() {
 
   const TABS: [MainTab, string][] = [
     ['schedule', '일정'],
-    ['makeup', '가능 시간'],
+    ['makeup', '보강 신청'],
     ['payment', '결제'],
     ['report', '성장 기록'],
   ];
@@ -683,8 +707,8 @@ export default function ScheduleScreen() {
           />
         }
       >
-        {/* ── 레슨권 요약 카드 (일정·가능 시간 탭) ── */}
-        {(tab === 'schedule' || tab === 'makeup') && member && (
+        {/* ── 레슨권 요약 카드 (일정 탭) ── */}
+        {tab === 'schedule' && member && (
           <View style={s.lessonSummaryCard}>
             <Text style={s.lessonSummaryTitle}>{packageTitle || '레슨권'}</Text>
             <View style={s.lessonSummaryRow}>
