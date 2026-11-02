@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  Image,
   StyleSheet,
   Animated,
   TouchableOpacity,
@@ -49,11 +48,7 @@ export function LoadingScreen({ onRetry, timeoutMs = 5000 }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Image
-          source={require('../assets/images/kerri-logo.png')}
-          style={styles.wordmark}
-          resizeMode="contain"
-        />
+        <Text style={styles.wordmark}>KERRI</Text>
         {showRetry ? (
           <TouchableOpacity onPress={onRetry} style={styles.retryButton} activeOpacity={0.7}>
             <Text style={styles.retryText}>다시 시도</Text>
@@ -84,8 +79,10 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   wordmark: {
-    width: 180,
-    height: 60,
+    fontSize: 76,
+    fontWeight: '800',
+    color: Colors.primary,
+    letterSpacing: 2,
     marginBottom: 48,
   },
   spinnerWrap: {
