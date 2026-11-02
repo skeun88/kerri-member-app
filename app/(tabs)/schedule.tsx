@@ -254,10 +254,6 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
         })}
       />
 
-      <View style={s.legendRow}>
-        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: '#aaa' }]} /><Text style={s.legendText}>예약됨</Text></View>
-        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: TERRA }]} /><Text style={s.legendText}>예약 가능</Text></View>
-      </View>
 
       {loadingSlots && <ActivityIndicator color={TERRA} style={{ padding: 16 }} />}
 
