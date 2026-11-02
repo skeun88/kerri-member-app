@@ -120,6 +120,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
   const [sending, setSending] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [coachAvailability, setCoachAvailability] = useState<{ days: number[]; startMin: number; endMin: number } | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const todayStr = todayKST();
 
@@ -324,17 +325,29 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                   ) : null}
                   {isPending && (
                     <TouchableOpacity
-                      style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#F5F5F5' }}
+                      style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#F5F5F5', opacity: cancellingId === req.id ? 0.5 : 1 }}
+                      disabled={cancellingId !== null}
                       onPress={() => {
                         Alert.alert('신청 취소', '보강 신청을 취소할까요?', [
                           { text: '아니요', style: 'cancel' },
                           { text: '취소하기', style: 'destructive', onPress: async () => {
-                            await supabase.from('lesson_requests').update({ status: 'cancelled' }).eq('id', req.id);
-                            loadMyRequests();
+                            setCancellingId(req.id);
+                            const { error } = await supabase.from('lesson_requests')
+                              .update({ status: 'cancelled' })
+                              .eq('id', req.id);
+                            setCancellingId(null);
+                            if (error) {
+                              Alert.alert('오류', '신청 취소 중 문제가 발생했어요. 다시 시도해주세요.');
+                              return;
+                            }
+                            await loadMyRequests();
                           }},
                         ]);
                       }}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#9E9E9E' }}>신청 취소</Text>
+                      {cancellingId === req.id
+                        ? <ActivityIndicator size="small" color="#9E9E9E" />
+                        : <Text style={{ fontSize: 13, fontWeight: '600', color: '#9E9E9E' }}>신청 취소</Text>
+                      }
                     </TouchableOpacity>
                   )}
                 </View>
