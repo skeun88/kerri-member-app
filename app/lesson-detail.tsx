@@ -31,6 +31,7 @@ function resolveAttendanceStatus(
     if (absenceReporter === 'member') return 'pending';
     return 'absent';
   }
+  if (attendanceStatus === '취소' || attendanceStatus === 'cancelled' || attendanceStatus === 'canceled') return 'cancelled';
   return 'scheduled';
 }
 

@@ -691,6 +691,12 @@ export default function ScheduleScreen() {
           table: 'lesson_requests',
           filter: `member_id=eq.${mem.id}`,
         }, () => loadData())
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'attendance',
+          filter: `member_id=eq.${mem.id}`,
+        }, () => loadData())
         .subscribe();
     })();
 
