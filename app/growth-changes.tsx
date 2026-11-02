@@ -27,6 +27,7 @@ interface LessonComparison {
 
 interface LessonRecord {
   plan_id: string;
+  lesson_id: string | null;
   created_at: string;
   lesson_comparison: LessonComparison[];
 }
@@ -80,9 +81,10 @@ export default function GrowthChangesScreen() {
       if (!member) { setLoading(false); return; }
 
       const { data, error: dbErr } = await supabase
-        .from('member_lesson_plan_view')
-        .select('id, created_at, lesson_comparison')
+        .from('lesson_plans')
+        .select('id, lesson_id, created_at, lesson_comparison')
         .eq('member_id', member.id)
+        .eq('status', 'completed')
         .not('lesson_comparison', 'is', null)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -93,6 +95,7 @@ export default function GrowthChangesScreen() {
         .filter(r => Array.isArray(r.lesson_comparison) && (r.lesson_comparison as unknown[]).length > 0)
         .map(r => ({
           plan_id: r.id as string,
+          lesson_id: (r.lesson_id as string) ?? null,
           created_at: r.created_at as string,
           lesson_comparison: r.lesson_comparison as LessonComparison[],
         }));
@@ -178,7 +181,10 @@ export default function GrowthChangesScreen() {
             return (
               <TouchableOpacity
                 style={styles.card}
-                onPress={() => router.push('/(tabs)/report' as never)}
+                onPress={() => item.lesson_id
+                  ? router.push({ pathname: '/lesson-detail', params: { id: item.lesson_id } } as never)
+                  : router.push('/(tabs)/report' as never)
+                }
                 activeOpacity={0.85}
               >
                 <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
