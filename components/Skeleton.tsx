@@ -115,50 +115,39 @@ export function ScheduleSkeleton() {
 
 export function ProfileSkeleton() {
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      {/* Hero */}
-      <View style={[sk.hero, { paddingTop: 60, paddingBottom: 28 }]}>
-        <View style={[sk.row, { alignItems: 'flex-start', marginBottom: 0 }]}>
-          <SkeletonBox dark width={72} height={72} borderRadius={36} style={{ marginRight: 16 }} />
-          <View style={{ flex: 1, gap: 8, paddingTop: 6 }}>
-            <SkeletonBox dark width="55%" height={18} />
-            <SkeletonBox dark width="70%" height={13} />
-            <SkeletonBox dark width={80} height={22} borderRadius={Radius.full} />
-          </View>
+    <View style={{ flex: 1, backgroundColor: '#F7F7F5' }}>
+      {/* Header */}
+      <View style={{ paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12 }}>
+        <SkeletonBox width={48} height={22} borderRadius={6} />
+      </View>
+
+      {/* Profile card */}
+      <View style={[sk.card, { marginHorizontal: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
+        <SkeletonBox width={64} height={64} borderRadius={32} />
+        <View style={{ flex: 1, gap: 8 }}>
+          <SkeletonBox width="55%" height={18} borderRadius={6} />
+          <SkeletonBox width="70%" height={13} borderRadius={6} />
+          <SkeletonBox width={60} height={20} borderRadius={Radius.full} />
         </View>
       </View>
 
-      <View style={sk.body}>
-        {/* 통계 카드 */}
-        <View style={sk.statsRow}>
+      {/* Stats card */}
+      <View style={[sk.card, { marginHorizontal: 16, marginBottom: 12 }]}>
+        <SkeletonBox width="40%" height={13} borderRadius={4} style={{ marginBottom: 16 }} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
           {[0, 1, 2, 3].map(i => (
-            <View key={i} style={sk.statCell}>
-              <SkeletonBox width={40} height={22} borderRadius={4} style={{ marginBottom: 6 }} />
+            <View key={i} style={{ width: '50%', paddingVertical: 14, alignItems: 'center', gap: 6 }}>
+              <SkeletonBox width={44} height={22} borderRadius={4} />
               <SkeletonBox width={36} height={12} borderRadius={4} />
             </View>
           ))}
         </View>
+      </View>
 
-        {/* 구독 카드 */}
-        <View style={sk.card}>
-          <View style={sk.row}>
-            <SkeletonBox width={40} height={40} borderRadius={Radius.md} style={{ marginRight: 12 }} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <SkeletonBox width="50%" height={15} />
-              <SkeletonBox width="30%" height={12} />
-            </View>
-          </View>
-        </View>
-
-        {/* 출석 */}
-        <View style={sk.card}>
-          <SkeletonBox width="40%" height={14} style={{ marginBottom: 12 }} />
-          <View style={[sk.row, { gap: 8 }]}>
-            {Array(8).fill(0).map((_, i) => (
-              <SkeletonBox key={i} width={28} height={28} borderRadius={14} style={{ flex: undefined }} />
-            ))}
-          </View>
-        </View>
+      {/* Account card */}
+      <View style={[sk.card, { marginHorizontal: 16 }]}>
+        <SkeletonBox width="35%" height={13} borderRadius={4} style={{ marginBottom: 14 }} />
+        <SkeletonBox width="40%" height={16} borderRadius={4} />
       </View>
     </View>
   );
