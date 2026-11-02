@@ -776,7 +776,7 @@ export default function ScheduleScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       {/* ── 상단 헤더 ── */}
       <View style={s.header}>
-        <Text style={s.headerTitle}>내 일정</Text>
+        <Text style={s.headerTitle}>레슨</Text>
         <TouchableOpacity style={s.headerIconBtn}>
           <Ionicons name="notifications-outline" size={22} color={TEXT_PRIMARY} />
         </TouchableOpacity>

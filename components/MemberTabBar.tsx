@@ -22,7 +22,7 @@ type TabDef = {
 
 const TABS: TabDef[] = [
   { name: 'index', label: '홈', icon: 'home', iconOutline: 'home-outline' },
-  { name: 'schedule', label: '내 일정', icon: 'calendar', iconOutline: 'calendar-outline' },
+  { name: 'schedule', label: '레슨', icon: 'calendar', iconOutline: 'calendar-outline' },
   { name: 'report', label: '레슨 기록', icon: 'document-text', iconOutline: 'document-text-outline' },
   { name: 'profile', label: '마이', icon: 'person', iconOutline: 'person-outline' },
 ];
