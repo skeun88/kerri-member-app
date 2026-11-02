@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { ProfileSkeleton } from '../../components/Skeleton';
 
@@ -29,6 +30,7 @@ function isSystemEmail(email: string): boolean {
 }
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
   const [email, setEmail] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -194,7 +196,7 @@ export default function ProfileScreen() {
         {/* ── Profile Card ──────────────────────────────────────── */}
         <View style={styles.card}>
           <View style={styles.profileRow}>
-            <TouchableOpacity onPress={() => setEditModal(true)} style={styles.avatarWrap}>
+            <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.avatarWrap}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initial}</Text>
               </View>
@@ -206,7 +208,7 @@ export default function ProfileScreen() {
             <View style={styles.profileInfo}>
               <View style={styles.nameRow}>
                 <Text style={styles.profileName}>{profile?.name ?? '회원'}</Text>
-                <TouchableOpacity onPress={() => setEditModal(true)} style={styles.editBtn}>
+                <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.editBtn}>
                   <Text style={styles.editBtnText}>수정</Text>
                 </TouchableOpacity>
               </View>
