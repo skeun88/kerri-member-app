@@ -126,7 +126,6 @@ export default function OnboardingScreen() {
         .update({
           birth_date: `${year}-${mm}-${dd}`,
           province,
-          city: province,
           district,
           exercise_experience: experience,
           lesson_goal: goal,
