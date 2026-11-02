@@ -40,6 +40,7 @@ export default function ProfileScreen() {
   const [editModal, setEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   async function loadProfile() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -117,6 +118,50 @@ export default function ProfileScreen() {
       { text: '취소', style: 'cancel' },
       { text: '로그아웃', style: 'destructive', onPress: () => supabase.auth.signOut() },
     ]);
+  }
+
+  async function confirmDelete() {
+    setIsDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/delete-member-account`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || '삭제 실패');
+      }
+      await supabase.auth.signOut();
+    } catch (e: any) {
+      setIsDeleting(false);
+      Alert.alert('오류', '삭제 중 문제가 발생했어요. 다시 시도해주세요.');
+    }
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      '계정을 삭제할까요?',
+      '모든 레슨 기록과 계정 정보가 삭제됩니다. 이 작업은 되돌릴 수 없어요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              '정말 삭제할까요?',
+              '삭제 후에는 같은 코드로 다시 가입할 수 없어요.',
+              [
+                { text: '취소', style: 'cancel' },
+                { text: '영구 삭제', style: 'destructive', onPress: confirmDelete },
+              ]
+            );
+          },
+        },
+      ]
+    );
   }
 
   const level = profile?.level ?? '';
@@ -207,6 +252,19 @@ export default function ProfileScreen() {
             <Ionicons name="log-out-outline" size={18} color="#E53E3E" />
             <Text style={[styles.menuLabel, { color: '#E53E3E' }]}>로그아웃</Text>
             <Ionicons name="chevron-forward" size={16} color="#E53E3E" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+          <TouchableOpacity
+            style={styles.menuRow}
+            onPress={handleDeleteAccount}
+            activeOpacity={0.7}
+            disabled={isDeleting}
+          >
+            <Ionicons name="trash-outline" size={18} color="#9E9E9E" />
+            <Text style={[styles.menuLabel, { color: '#9E9E9E' }]}>
+              {isDeleting ? '삭제 중...' : '계정 삭제'}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#9E9E9E" />
           </TouchableOpacity>
         </View>
 
@@ -312,6 +370,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12, gap: 12,
   },
   menuLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
+  menuDivider: { height: 1, backgroundColor: DIVIDER, marginVertical: 4 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
