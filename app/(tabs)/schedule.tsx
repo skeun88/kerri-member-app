@@ -22,6 +22,36 @@ const TEXT_MUTED = '#667085';
 const DIVIDER = '#E8EBEF';
 
 type MainTab = 'schedule' | 'makeup' | 'payment' | 'report';
+type LessonAttendanceStatus = 'scheduled' | 'attended' | 'absent' | 'cancelled' | 'pending';
+
+const ATTENDANCE_STATUS_CONFIG: Record<LessonAttendanceStatus, { bg: string; text: string; label: string; dotColor: string }> = {
+  scheduled: { bg: '#FBF2EF', text: TERRA, label: '예정', dotColor: TERRA },
+  attended:  { bg: '#E8F5E9', text: '#2E7D32', label: '출석', dotColor: '#2E7D32' },
+  absent:    { bg: '#FFEBEE', text: '#C62828', label: '결석', dotColor: '#C62828' },
+  cancelled: { bg: '#F5F5F5', text: '#9E9E9E', label: '취소', dotColor: '#9E9E9E' },
+  pending:   { bg: '#FFF3E0', text: '#F57C00', label: '확인 대기', dotColor: '#F57C00' },
+};
+
+interface AttendanceData {
+  status?: string;
+  absence_reporter?: string;
+  absence_reported_at?: string;
+}
+
+function resolveLessonStatus(
+  lesson: { date: string },
+  today: string,
+  attendance?: AttendanceData,
+): LessonAttendanceStatus {
+  if (!attendance || !attendance.status) return 'scheduled';
+  const s = attendance.status;
+  if (s === '출석' || s === '지각' || s === '조퇴') return 'attended';
+  if (s === '결석') {
+    if (attendance.absence_reporter === 'member') return 'pending';
+    return 'absent';
+  }
+  return 'scheduled';
+}
 
 interface Lesson {
   id: string; date: string; start_time: string; end_time: string;
@@ -306,11 +336,12 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
 // ── 커스텀 달력 ──────────────────────────────────────────
 function CalendarView({
-  year, month, selectedDate, lessonDates, unavailableDows,
+  year, month, selectedDate, lessonDates, lessonStatusColors, unavailableDows,
   onSelectDate, onPrevMonth, onNextMonth, onTodayPress,
 }: {
   year: number; month: number; selectedDate: string;
   lessonDates: Set<string>;
+  lessonStatusColors?: Record<string, string[]>;
   unavailableDows?: number[];
   onSelectDate: (d: string) => void;
   onPrevMonth: () => void; onNextMonth: () => void;
@@ -353,6 +384,7 @@ function CalendarView({
           const isSelected = dateStr === selectedDate;
           const isToday = dateStr === todayStr;
           const hasLesson = lessonDates.has(dateStr);
+          const statusColors = lessonStatusColors?.[dateStr];
           const dow = i % 7;
           const isUnavailable = unavailableDows ? unavailableDows.includes(dow) : false;
           return (
@@ -370,7 +402,15 @@ function CalendarView({
                   isToday && !isSelected && { color: TERRA, fontWeight: '800' },
                 ]}>{day}</Text>
               </View>
-              {hasLesson && <View style={[cal.dot, isSelected && { backgroundColor: '#fff' }]} />}
+              {statusColors && statusColors.length > 0 ? (
+                <View style={{ flexDirection: 'row', gap: 2, marginTop: 1 }}>
+                  {statusColors.slice(0, 3).map((c, ci) => (
+                    <View key={ci} style={[cal.dot, { backgroundColor: isSelected ? '#fff' : c }]} />
+                  ))}
+                </View>
+              ) : hasLesson ? (
+                <View style={[cal.dot, isSelected && { backgroundColor: '#fff' }]} />
+              ) : null}
             </TouchableOpacity>
           );
         })}
@@ -408,7 +448,7 @@ export default function ScheduleScreen() {
   const [pkgDuration, setPkgDuration] = useState(60);
   const [packageTitle, setPackageTitle] = useState('');
   const [coachName, setCoachName] = useState('');
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceData>>({});
   const [memberReports, setMemberReports] = useState<MemberReport[]>([]);
 
   const router = useRouter();
@@ -470,9 +510,11 @@ export default function ScheduleScreen() {
     const { data: coachProfile } = await supabase.from('coach_profiles').select('display_name').eq('coach_id', mem.coach_id).maybeSingle();
     if (coachProfile?.display_name) setCoachName(coachProfile.display_name);
 
-    const { data: attendanceData } = await supabase.from('attendance').select('lesson_id, status').eq('member_id', mem.id);
-    const aMap: Record<string, string> = {};
-    (attendanceData ?? []).forEach((a: { lesson_id: string; status: string }) => { aMap[a.lesson_id] = a.status; });
+    const { data: attendanceData } = await supabase.from('attendance').select('lesson_id, status, absence_reporter, absence_reported_at').eq('member_id', mem.id);
+    const aMap: Record<string, AttendanceData> = {};
+    (attendanceData ?? []).forEach((a: { lesson_id: string; status: string; absence_reporter?: string; absence_reported_at?: string }) => {
+      aMap[a.lesson_id] = { status: a.status, absence_reporter: a.absence_reporter, absence_reported_at: a.absence_reported_at };
+    });
     setAttendanceMap(aMap);
 
     const { data: reports } = await supabase.from('member_lesson_reports').select('lesson_date, improvement_points').eq('member_id', mem.id).eq('sent_to_member', true).not('improvement_points', 'is', null).order('lesson_date', { ascending: false });
@@ -530,6 +572,13 @@ export default function ScheduleScreen() {
   }, []);
 
   const lessonDateSet = new Set(lessons.map(l => l.date));
+  const lessonStatusColorsMap: Record<string, string[]> = {};
+  lessons.forEach(l => {
+    const status = resolveLessonStatus(l, today, attendanceMap[l.id]);
+    const color = ATTENDANCE_STATUS_CONFIG[status].dotColor;
+    if (!lessonStatusColorsMap[l.date]) lessonStatusColorsMap[l.date] = [];
+    lessonStatusColorsMap[l.date].push(color);
+  });
   const dayLessons = lessons.filter(l => l.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time));
   const totalCredits = member?.total_credits ?? 0;
   const remainingCredits = member?.remaining_credits ?? 0;
@@ -627,6 +676,7 @@ export default function ScheduleScreen() {
             <CalendarView
               year={calMonth.year} month={calMonth.month}
               selectedDate={selectedDate} lessonDates={lessonDateSet}
+              lessonStatusColors={lessonStatusColorsMap}
               onSelectDate={(d) => {
                 setSelectedDate(d);
                 const dt = new Date(d + 'T00:00:00');
@@ -671,7 +721,7 @@ export default function ScheduleScreen() {
                     lesson={l}
                     today={today}
                     coachName={coachName}
-                    attendanceStatus={attendanceMap[l.id]}
+                    attendance={attendanceMap[l.id]}
                     prevGoalTexts={getPrevGoal(l.date) ?? undefined}
                     onPress={() => router.push({ pathname: '/lesson-detail', params: { id: l.id } })}
                   />
@@ -832,30 +882,20 @@ export default function ScheduleScreen() {
   );
 }
 
-function ScheduleLessonCard({ lesson, today, coachName, attendanceStatus, prevGoalTexts, onPress }: {
-  lesson: Lesson; today: string; coachName?: string; attendanceStatus?: string;
+function ScheduleLessonCard({ lesson, today, coachName, attendance, prevGoalTexts, onPress }: {
+  lesson: Lesson; today: string; coachName?: string; attendance?: AttendanceData;
   prevGoalTexts?: string[]; onPress: () => void;
 }) {
   const isPast = lesson.date < today;
-  const isToday = lesson.date === today;
-  const statusLabel = attendanceStatus === '출석' || attendanceStatus === '지각' || attendanceStatus === '조퇴'
-    ? '완료'
-    : attendanceStatus === '결석' ? '결석'
-    : isToday ? '오늘'
-    : isPast ? '완료'
-    : '예정';
-  const statusColor = statusLabel === '결석' ? '#EF4444'
-    : statusLabel === '오늘' ? TERRA
-    : statusLabel === '예정' ? '#22C55E'
-    : TEXT_MUTED;
-  const statusBg = statusLabel === '결석' ? '#FEE2E2'
-    : statusLabel === '오늘' ? LESSON_CARD_BG
-    : statusLabel === '예정' ? '#ECFDF5'
-    : '#F4F6F9';
+  const resolvedStatus = resolveLessonStatus(lesson, today, attendance);
+  const cfg = ATTENDANCE_STATUS_CONFIG[resolvedStatus];
+  const statusLabel = cfg.label;
+  const statusColor = cfg.text;
+  const statusBg = cfg.bg;
 
   return (
     <TouchableOpacity style={s.scheduleLessonCard} onPress={onPress} activeOpacity={0.7}>
-      <View style={[s.lessonLeftBorder, { backgroundColor: isPast ? DIVIDER : TERRA }]} />
+      <View style={[s.lessonLeftBorder, { backgroundColor: isPast && resolvedStatus !== 'scheduled' ? DIVIDER : statusColor }]} />
       <View style={s.lessonContent}>
         <View style={s.lessonTopRow}>
           <View style={[s.lessonStatusBadge, { backgroundColor: statusBg }]}>
@@ -863,7 +903,7 @@ function ScheduleLessonCard({ lesson, today, coachName, attendanceStatus, prevGo
           </View>
           <Text style={s.lessonTimeText}>{lesson.start_time.slice(0,5)} ~ {lesson.end_time.slice(0,5)}</Text>
         </View>
-        <Text style={[s.lessonTitleText, isPast && statusLabel !== '오늘' && { color: TEXT_MUTED }]}>{lesson.title}</Text>
+        <Text style={[s.lessonTitleText, isPast && resolvedStatus === 'scheduled' && { color: TEXT_MUTED }]}>{lesson.title}</Text>
         {lesson.location && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
             <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
