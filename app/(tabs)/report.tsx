@@ -23,6 +23,12 @@ const TEXT_PRIMARY = '#20242C';
 const TEXT_MUTED = '#667085';
 const DIVIDER = '#E8EBEF';
 
+interface LessonComparison {
+  point: string;
+  status: 'improved' | 'same' | 'regressed' | 'needs_work';
+  reason?: string;
+}
+
 interface CoachReport {
   plan_id: string;
   member_id: string;
@@ -31,6 +37,7 @@ interface CoachReport {
   achievements: string[];
   improvement_points_raw: string[] | string | null;
   next_goals_raw: string[] | string | null;
+  lesson_comparison: LessonComparison[] | null;
   court_type: string | null;
   session_goals: string | null;
   duration_minutes: number | null;
@@ -111,7 +118,7 @@ export default function ReportScreen() {
     const [{ data: planData }, coachRes] = await Promise.all([
       supabase
         .from('member_lesson_plan_view')
-        .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, duration_minutes')
+        .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, duration_minutes, lesson_comparison')
         .eq('member_id', member.id)
         .order('created_at', { ascending: false })
         .limit(30),
@@ -162,6 +169,7 @@ export default function ReportScreen() {
           court_type: plan.court_type ?? null,
           session_goals: plan.session_goals ?? null,
           duration_minutes: plan.duration_minutes ?? null,
+          lesson_comparison: Array.isArray(plan.lesson_comparison) ? plan.lesson_comparison : null,
           report_id: report?.id ?? null,
           is_read: report?.is_read ?? false,
           credit_unlocked: report?.credit_unlocked ?? false,
@@ -381,7 +389,30 @@ export default function ReportScreen() {
                         </View>
                       )}
 
-                      {/* ② 오늘 잘한 점 */}
+                      {/* ② 이전 레슨 대비 변화 */}
+                      {report.lesson_comparison && report.lesson_comparison.length > 0 && (
+                        <View style={styles.section}>
+                          <Text style={styles.sectionTitle}>이전 레슨 대비 변화</Text>
+                          {report.lesson_comparison.slice(0, 3).map((c, i) => {
+                            const isImproved = c.status === 'improved';
+                            const isNeedsWork = c.status === 'needs_work' || c.status === 'regressed';
+                            const badgeLabel = isImproved ? '좋아졌어요' : isNeedsWork ? '더 연습해요' : '유지';
+                            return (
+                              <View key={i} style={[styles.compRow, i < report.lesson_comparison!.length - 1 && styles.compRowBorder]}>
+                                <View style={styles.compTopRow}>
+                                  <Text style={styles.compPoint}>{c.point}</Text>
+                                  <View style={[styles.compBadge, isImproved ? styles.compBadgeImproved : isNeedsWork ? styles.compBadgeNeeds : styles.compBadgeNeutral]}>
+                                    <Text style={[styles.compBadgeText, isImproved ? styles.compBadgeTextImproved : isNeedsWork ? styles.compBadgeTextNeeds : styles.compBadgeTextNeutral]}>{badgeLabel}</Text>
+                                  </View>
+                                </View>
+                                {!!c.reason && <Text style={styles.compReason}>{c.reason}</Text>}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {/* ③ 오늘 잘한 점 */}
                       {achievements.length > 0 && (
                         <View style={styles.section}>
                           <Text style={styles.sectionTitle}>오늘 잘한 점</Text>
@@ -394,7 +425,7 @@ export default function ReportScreen() {
                         </View>
                       )}
 
-                      {/* ③ 교정 포인트 */}
+                      {/* ④ 교정 포인트 */}
                       {improvements.length > 0 && (
                         <View style={styles.section}>
                           <Text style={styles.sectionTitle}>교정 포인트</Text>
@@ -407,7 +438,7 @@ export default function ReportScreen() {
                         </View>
                       )}
 
-                      {/* ④ 다음 레슨 목표 — 연한 피치 강조 영역 */}
+                      {/* ⑤ 다음 레슨 목표 — 연한 피치 강조 영역 */}
                       {nextGoals.length > 0 && (
                         <View style={styles.goalSection}>
                           <View style={styles.goalHeader}>
@@ -527,4 +558,18 @@ const styles = StyleSheet.create({
   goalHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   goalTitle: { fontSize: 13, fontWeight: '700', color: TERRA, textTransform: 'uppercase', letterSpacing: 0.5 },
   goalText: { fontSize: 15, color: TEXT_PRIMARY, lineHeight: 24, flex: 1 },
+
+  compRow: { paddingVertical: 10 },
+  compRowBorder: { borderBottomWidth: 1, borderBottomColor: DIVIDER },
+  compTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  compPoint: { fontSize: 14, color: TEXT_PRIMARY, fontWeight: '600', flex: 1, lineHeight: 20 },
+  compBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  compBadgeImproved: { backgroundColor: '#ECFDF5' },
+  compBadgeNeeds: { backgroundColor: GOAL_BG },
+  compBadgeNeutral: { backgroundColor: '#F4F6F9' },
+  compBadgeText: { fontSize: 11, fontWeight: '700' },
+  compBadgeTextImproved: { color: '#059669' },
+  compBadgeTextNeeds: { color: TERRA },
+  compBadgeTextNeutral: { color: TEXT_MUTED },
+  compReason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 20, marginTop: 4 },
 });
