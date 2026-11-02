@@ -59,7 +59,7 @@ interface Lesson {
 }
 interface Payment {
   id: string; amount: number; paid_amount: number; due_date: string;
-  paid_date?: string; status: string; description: string; payment_method?: string;
+  paid_date?: string; status: string; description: string; payment_method?: string; payment_channel?: string;
 }
 interface MemberInfo {
   id: string; name: string; remaining_credits: number; total_credits: number;
@@ -437,6 +437,37 @@ const cal = StyleSheet.create({
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: TERRA, marginTop: 1 },
 });
 
+// ── 결제 내역 도우미 ──────────────────────────────────────
+function formatDateDot(dateStr: string): string {
+  return dateStr.replace(/-/g, '.');
+}
+
+function formatMonthLabel(yyyymm: string): string {
+  const [year, month] = yyyymm.split('-').map(Number);
+  return `${year}년 ${month}월`;
+}
+
+function groupPaymentsByMonth(items: Payment[]): { month: string; items: Payment[] }[] {
+  const map: Record<string, Payment[]> = {};
+  items.forEach(p => {
+    const dateStr = p.paid_date ?? p.due_date;
+    const month = dateStr.slice(0, 7);
+    if (!map[month]) map[month] = [];
+    map[month].push(p);
+  });
+  return Object.keys(map)
+    .sort()
+    .reverse()
+    .map(month => ({
+      month,
+      items: map[month].sort((a, b) => {
+        const da = a.paid_date ?? a.due_date;
+        const db = b.paid_date ?? b.due_date;
+        return db.localeCompare(da);
+      }),
+    }));
+}
+
 // ── 메인 ──────────────────────────────────────────────────
 export default function ScheduleScreen() {
   const [tab, setTab] = useState<MainTab>('schedule');
@@ -450,6 +481,8 @@ export default function ScheduleScreen() {
   const [coachName, setCoachName] = useState('');
   const [attendanceMap, setAttendanceMap] = useState<Record<string, AttendanceData>>({});
   const [memberReports, setMemberReports] = useState<MemberReport[]>([]);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [payDetailModal, setPayDetailModal] = useState(false);
 
   const router = useRouter();
   const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
@@ -740,64 +773,92 @@ export default function ScheduleScreen() {
         {/* ── 결제 탭 ── */}
         {tab === 'payment' && (
           <>
-            {member && (
-              <View style={s.creditBanner}>
-                <Ionicons name="layers-outline" size={18} color="#fff" />
-                <Text style={s.creditBannerText}>잔여 레슨 <Text style={s.creditBannerNum}>{member.remaining_credits}회</Text></Text>
-                {member.remaining_credits <= 3 && <View style={s.lowBadge}><Text style={s.lowBadgeText}>잔여 적음</Text></View>}
-              </View>
-            )}
             {totalUnpaid > 0 && (
-              <View style={[s.creditBanner, { backgroundColor: '#EF4444', margin: 20, marginTop: 0 }]}>
+              <View style={[s.creditBanner, { backgroundColor: '#EF4444', margin: 20, marginBottom: 0 }]}>
                 <Ionicons name="alert-circle" size={18} color="#fff" />
                 <Text style={s.creditBannerText}>미납 금액 <Text style={{ fontWeight: '900' }}>{totalUnpaid.toLocaleString()}원</Text></Text>
               </View>
             )}
             <View style={s.section}>
-              {unpaid.map(p => {
-                const dday = getDDay(p.due_date);
-                return (
-                  <View key={p.id} style={[s.payCard, dday.urgent && s.payCardUrgent]}>
-                    <View style={s.payCardTop}>
-                      <View>
-                        <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
-                        <Text style={s.payDate}>납부기한: {p.due_date}</Text>
+              {/* 미납 내역 */}
+              {unpaid.length > 0 && (
+                <>
+                  <Text style={s.sectionTitle}>미납 내역</Text>
+                  {unpaid.map(p => {
+                    const dday = getDDay(p.due_date);
+                    return (
+                      <View key={p.id} style={[s.payCard, dday.urgent && s.payCardUrgent]}>
+                        <View style={s.payCardTop}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <View style={s.unpaidStatusBadge}>
+                                <Text style={s.unpaidStatusBadgeText}>{p.status}</Text>
+                              </View>
+                            </View>
+                            <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
+                            <Text style={s.payDate}>납부기한: {formatDateDot(p.due_date)}</Text>
+                          </View>
+                          <View style={[s.ddayBadge, { backgroundColor: dday.urgent ? '#EF4444' : '#EAB308' }]}>
+                            <Text style={s.ddayText}>{dday.label}</Text>
+                          </View>
+                        </View>
+                        <View style={s.payCardBottom}>
+                          <Text style={[s.payAmount, { color: '#EF4444' }]}>{(p.amount - p.paid_amount).toLocaleString()}원</Text>
+                          <TouchableOpacity style={s.payNowBtn}
+                            onPress={() => Alert.alert('결제 안내', `${(p.amount - p.paid_amount).toLocaleString()}원\n코치에게 연락해 결제해주세요.`)}>
+                            <Ionicons name="card-outline" size={14} color="#fff" />
+                            <Text style={s.payNowText}>결제하기</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                      <View style={[s.ddayBadge, { backgroundColor: dday.urgent ? '#EF4444' : '#EAB308' }]}>
-                        <Text style={s.ddayText}>{dday.label}</Text>
-                      </View>
-                    </View>
-                    <View style={s.payCardBottom}>
-                      <Text style={[s.payAmount, { color: '#EF4444' }]}>{(p.amount - p.paid_amount).toLocaleString()}원</Text>
-                      <TouchableOpacity style={s.payNowBtn}
-                        onPress={() => Alert.alert('결제 안내', `${(p.amount - p.paid_amount).toLocaleString()}원\n코치에게 연락해 결제해주세요.`)}>
-                        <Ionicons name="card-outline" size={14} color="#fff" />
-                        <Text style={s.payNowText}>결제하기</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-              {payments.filter(p => p.status === '납부완료').map(p => (
-                <View key={p.id} style={s.payCardDone}>
-                  <View style={s.payCardTop}>
-                    <View>
-                      <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
-                      <Text style={s.payDate}>납부일: {(p as { paid_date?: string }).paid_date ?? p.due_date}</Text>
-                    </View>
-                    <View style={[s.statusBadge, { backgroundColor: '#FBF2EF' }]}>
-                      <Text style={[s.statusBadgeText, { color: TERRA }]}>납부완료</Text>
-                    </View>
-                  </View>
-                  <Text style={s.payAmount}>{p.amount.toLocaleString()}원</Text>
-                </View>
-              ))}
-              {payments.length === 0 && (
-                <View style={s.empty}>
-                  <Ionicons name="card-outline" size={40} color={TEXT_MUTED} />
-                  <Text style={s.emptyText}>결제 내역이 없어요</Text>
-                </View>
+                    );
+                  })}
+                </>
               )}
+
+              {/* 결제 내역 (월별 그룹) */}
+              {(() => {
+                const paidPayments = payments.filter(p => p.status === '납부완료');
+                if (paidPayments.length === 0 && unpaid.length === 0) {
+                  return (
+                    <View style={s.empty}>
+                      <Ionicons name="receipt-outline" size={40} color={TEXT_MUTED} />
+                      <Text style={s.emptyText}>아직 결제 내역이 없어요</Text>
+                    </View>
+                  );
+                }
+                if (paidPayments.length === 0) return null;
+                const groups = groupPaymentsByMonth(paidPayments);
+                return (
+                  <>
+                    <Text style={[s.sectionTitle, { marginTop: unpaid.length > 0 ? 16 : 0 }]}>결제 내역</Text>
+                    {groups.map(group => (
+                      <View key={group.month}>
+                        <Text style={s.monthDivider}>{formatMonthLabel(group.month)}</Text>
+                        {group.items.map(p => (
+                          <TouchableOpacity
+                            key={p.id}
+                            style={s.payCardDone}
+                            activeOpacity={0.7}
+                            onPress={() => { setSelectedPayment(p); setPayDetailModal(true); }}
+                          >
+                            <View style={s.payCardHistoryRow}>
+                              <View style={s.payCardHistoryLeft}>
+                                <View style={s.paidBadge}>
+                                  <Text style={s.paidBadgeText}>납부완료</Text>
+                                </View>
+                                <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
+                                <Text style={s.payDate}>결제일: {formatDateDot(p.paid_date ?? p.due_date)}</Text>
+                              </View>
+                              <Text style={s.payAmountRight}>{p.amount.toLocaleString()}원</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ))}
+                  </>
+                );
+              })()}
             </View>
           </>
         )}
@@ -842,6 +903,50 @@ export default function ScheduleScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* ── 결제 상세 모달 ── */}
+      <Modal visible={payDetailModal} transparent animationType="slide" onRequestClose={() => setPayDetailModal(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            {selectedPayment && (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                  <Text style={[s.modalTitle, { flex: 1, marginRight: 8 }]}>{selectedPayment.description || '레슨비'}</Text>
+                  <View style={s.paidBadge}>
+                    <Text style={s.paidBadgeText}>납부완료</Text>
+                  </View>
+                </View>
+                <View style={{ marginBottom: 24 }}>
+                  <View style={s.detailRow}>
+                    <Text style={s.detailLabel}>결제일</Text>
+                    <Text style={s.detailValue}>{formatDateDot(selectedPayment.paid_date ?? selectedPayment.due_date)}</Text>
+                  </View>
+                  <View style={s.detailRow}>
+                    <Text style={s.detailLabel}>결제 금액</Text>
+                    <Text style={[s.detailValue, { fontWeight: '800', color: TEXT_PRIMARY }]}>{selectedPayment.amount.toLocaleString()}원</Text>
+                  </View>
+                  {selectedPayment.payment_method ? (
+                    <View style={s.detailRow}>
+                      <Text style={s.detailLabel}>결제 수단</Text>
+                      <Text style={s.detailValue}>{selectedPayment.payment_method}</Text>
+                    </View>
+                  ) : null}
+                  {selectedPayment.payment_channel ? (
+                    <View style={s.detailRow}>
+                      <Text style={s.detailLabel}>결제 방법</Text>
+                      <Text style={s.detailValue}>{selectedPayment.payment_channel === 'online' ? '온라인' : '오프라인'}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </>
+            )}
+            <TouchableOpacity style={s.modalCloseBtn} onPress={() => setPayDetailModal(false)}>
+              <Text style={s.modalCloseBtnText}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── 레슨 상세 모달 ── */}
       <Modal visible={reportModal} transparent animationType="slide" onRequestClose={() => setReportModal(false)}>
@@ -1065,10 +1170,21 @@ const s = StyleSheet.create({
   },
   payCardUrgent: { borderColor: '#EF4444', backgroundColor: '#fff5f5' },
   payCardDone: {
-    backgroundColor: CARD_WHITE, borderRadius: 14,
-    marginBottom: 8, padding: 14,
-    borderWidth: 1, borderColor: DIVIDER,
+    backgroundColor: CARD_WHITE, borderRadius: 18,
+    marginBottom: 8, padding: 16,
+    borderWidth: 1, borderColor: DIVIDER, ...Shadow.sm,
   },
+  payCardHistoryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  payCardHistoryLeft: { flex: 1, gap: 4 },
+  paidBadge: { alignSelf: 'flex-start', backgroundColor: '#E8F5E9', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 2 },
+  paidBadgeText: { fontSize: 11, fontWeight: '700', color: '#2E7D32' },
+  unpaidStatusBadge: { alignSelf: 'flex-start', backgroundColor: '#FFEBEE', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  unpaidStatusBadgeText: { fontSize: 11, fontWeight: '700', color: '#EF4444' },
+  payAmountRight: { fontSize: 17, fontWeight: '800', color: TEXT_PRIMARY, alignSelf: 'center', marginLeft: 12 },
+  monthDivider: { fontSize: 13, fontWeight: '700', color: TEXT_MUTED, marginTop: 8, marginBottom: 8 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  detailLabel: { fontSize: 14, color: TEXT_MUTED },
+  detailValue: { fontSize: 14, color: TEXT_PRIMARY },
   payCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   payCardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   payDesc: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 2 },
