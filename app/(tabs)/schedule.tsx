@@ -2,13 +2,24 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, Modal, ActivityIndicator, TextInput,
+  SafeAreaView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
-import { Colors, Radius, Shadow } from '../../lib/theme';
+import { Radius, Shadow } from '../../lib/theme';
 import { ScheduleSkeleton } from '../../components/Skeleton';
+
+// ── Design tokens (홈 화면과 동일 팔레트) ──────────────────────
+const BG = '#F7F7F5';
+const CARD_WHITE = '#FFFFFF';
+const TERRA = '#C0755A';
+const LESSON_CARD_BG = '#F4E5DC';
+const GOAL_BG = '#F8EEE9';
+const TEXT_PRIMARY = '#20242C';
+const TEXT_MUTED = '#667085';
+const DIVIDER = '#E8EBEF';
 
 type MainTab = 'schedule' | 'makeup' | 'payment' | 'report';
 
@@ -44,7 +55,6 @@ function getDDay(dateStr: string) {
   return { label: `D+${Math.abs(diff)}`, urgent: true };
 }
 
-
 interface LessonRequest {
   id: string; requested_date: string; start_time: string; end_time: string; status: string; message?: string; reject_message?: string | null;
 }
@@ -71,7 +81,6 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     loadMyRequests();
   }, [coachId, calMonth.year, calMonth.month]);
 
-  // lesson_requests 상태업데이트 Realtime 구독 (수낙/거절 즉시 반영)
   useEffect(() => {
     if (!memberId) return;
     const ch = supabase.channel('makeup_requests_' + memberId)
@@ -98,7 +107,6 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     if (!coachId) return;
     setLoadingSlots(true);
 
-    // 코치 가용 시간 로드
     const { data: avail } = await supabase.from('coach_availability').select('*').eq('coach_id', coachId).maybeSingle();
     if (avail) {
       const [sh, sm] = (avail.available_start ?? '09:00').slice(0, 5).split(':').map(Number);
@@ -111,7 +119,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     const lastDayStr = `${calMonth.year}-${String(calMonth.month+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
     const { data } = await supabase.from('lessons').select('date, start_time, end_time')
       .eq('coach_id', coachId).gte('date', firstDay).lte('date', lastDayStr);
-    setBusySlots((data ?? []).map((l: any) => ({
+    setBusySlots((data ?? []).map((l: { date: string; start_time: string; end_time: string }) => ({
       date: l.date,
       startMin: tMin(l.start_time),
       endMin: tMin(l.end_time),
@@ -184,7 +192,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
         year={calMonth.year} month={calMonth.month}
         selectedDate={selectedDate ?? ''}
         lessonDates={busyDateSet}
-        unavailableDows={coachAvailability ? Array.from({ length: 7 }, (_, i) => i).filter(d => !coachAvailability.days.includes(d)) : undefined}
+        unavailableDows={coachAvailability ? Array.from({ length: 7 }, (_, i) => i).filter(d => !coachAvailability!.days.includes(d)) : undefined}
         onSelectDate={handleDateSelect}
         onPrevMonth={() => setCalMonth(p => {
           const m = p.month - 1; return m < 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: m };
@@ -196,10 +204,10 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 
       <View style={s.legendRow}>
         <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: '#aaa' }]} /><Text style={s.legendText}>예약됨</Text></View>
-        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: Colors.primary }]} /><Text style={s.legendText}>예약 가능</Text></View>
+        <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: TERRA }]} /><Text style={s.legendText}>예약 가능</Text></View>
       </View>
 
-      {loadingSlots && <ActivityIndicator color={Colors.primary} style={{ padding: 16 }} />}
+      {loadingSlots && <ActivityIndicator color={TERRA} style={{ padding: 16 }} />}
 
       {selectedDate && !loadingSlots && (
         <View style={s.section}>
@@ -208,17 +216,17 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
           </Text>
           {availableSlots.length === 0 ? (
             <View style={s.empty}>
-              <Ionicons name="time-outline" size={32} color={Colors.iconMuted} />
+              <Ionicons name="time-outline" size={32} color={TEXT_MUTED} />
               <Text style={s.emptyText}>이 날은 빈 시간이 없어요</Text>
             </View>
           ) : (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {availableSlots.map(slot => (
                 <TouchableOpacity key={slot}
-                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.primary + '18', borderWidth: 1, borderColor: Colors.primary }}
+                  style={{ paddingHorizontal: 16, paddingVertical: 10, borderRadius: Radius.md, backgroundColor: TERRA + '18', borderWidth: 1, borderColor: TERRA }}
                   onPress={() => { setBookingSlot(slot); setBookingModal(true); }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: Colors.primary }}>{slot}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.primary + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: TERRA }}>{slot}</Text>
+                  <Text style={{ fontSize: 12, color: TERRA + 'aa', marginTop: 1 }}>{lessonDuration}분</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -232,7 +240,7 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
           {myRequests.slice(0, 5).map(req => (
             <View key={req.id} style={[s.upcomingCard, {
               borderLeftWidth: 4,
-              borderLeftColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.primary : Colors.destructive,
+              borderLeftColor: req.status === 'pending' ? '#EAB308' : req.status === 'accepted' ? TERRA : '#EF4444',
             }]}>
               <View style={s.upcomingInfo}>
                 <Text style={s.upcomingTitle}>{req.requested_date} {req.start_time.slice(0,5)}</Text>
@@ -241,15 +249,15 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                   req.status === 'accepted' ? '✅ 수락됨' : '❌ 거절됨'
                 }</Text>
                 {req.status === 'rejected' && req.reject_message ? (
-                  <Text style={{ fontSize: 14, color: Colors.destructive, marginTop: 4, lineHeight: 16 }}>
+                  <Text style={{ fontSize: 14, color: '#EF4444', marginTop: 4, lineHeight: 16 }}>
                     💬 {req.reject_message}
                   </Text>
                 ) : null}
               </View>
-              <View style={[s.todayBadge, {
-                backgroundColor: req.status === 'pending' ? Colors.warning : req.status === 'accepted' ? Colors.primary : Colors.destructive
+              <View style={[s.statusBadge, {
+                backgroundColor: req.status === 'pending' ? '#EAB308' : req.status === 'accepted' ? TERRA : '#EF4444'
               }]}>
-                <Text style={s.todayText}>{
+                <Text style={s.statusBadgeText}>{
                   req.status === 'pending' ? '대기' : req.status === 'accepted' ? '수락' : '거절'
                 }</Text>
               </View>
@@ -269,16 +277,16 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
             </Text>
             <Text style={[s.sectionTitle, { fontSize: 13, marginBottom: 6 }]}>전달 메시지 (선택)</Text>
             <TextInput
-              style={{ backgroundColor: Colors.mutedBg, borderRadius: Radius.md, padding: 12, fontSize: 14, color: Colors.foreground, minHeight: 80, marginBottom: 16, textAlignVertical: 'top', borderWidth: 1, borderColor: Colors.border }}
+              style={{ backgroundColor: '#F4F6F9', borderRadius: Radius.md, padding: 12, fontSize: 14, color: TEXT_PRIMARY, minHeight: 80, marginBottom: 16, textAlignVertical: 'top', borderWidth: 1, borderColor: DIVIDER }}
               placeholder="코치님께 전달할 내용"
-              placeholderTextColor={Colors.placeholder}
+              placeholderTextColor={TEXT_MUTED}
               value={bookingMsg}
               onChangeText={setBookingMsg}
               multiline
             />
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity style={[s.modalCloseBtn, { flex: 1, backgroundColor: Colors.mutedBg }]} onPress={() => setBookingModal(false)}>
-                <Text style={[s.modalCloseBtnText, { color: Colors.primary }]}>취소</Text>
+              <TouchableOpacity style={[s.modalCloseBtn, { flex: 1, backgroundColor: '#F4F6F9' }]} onPress={() => setBookingModal(false)}>
+                <Text style={[s.modalCloseBtnText, { color: TERRA }]}>취소</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.modalCloseBtn, { flex: 1 }]} onPress={submitRequest} disabled={sending}>
                 {sending ? <ActivityIndicator color="#fff" /> : <Text style={s.modalCloseBtnText}>예약 요청</Text>}
@@ -310,21 +318,34 @@ function CalendarView({
   while (cells.length % 7 !== 0) cells.push(null);
 
   const todayStr = todayKST();
+  const isCurrentMonth = (() => {
+    const now = new Date();
+    return year === now.getFullYear() && month === now.getMonth();
+  })();
 
   return (
     <View style={cal.container}>
       <View style={cal.header}>
         <TouchableOpacity onPress={onPrevMonth} style={cal.navBtn}>
-          <Ionicons name="chevron-back" size={20} color={Colors.primary} />
+          <Ionicons name="chevron-back" size={20} color={TEXT_PRIMARY} />
         </TouchableOpacity>
-        <Text style={cal.title}>{year}년 {MONTHS[month]}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={cal.title}>{year}년 {MONTHS[month]}</Text>
+          {!isCurrentMonth && (
+            <TouchableOpacity
+              style={cal.todayBtn}
+              onPress={() => onSelectDate(todayStr)}>
+              <Text style={cal.todayBtnText}>오늘</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity onPress={onNextMonth} style={cal.navBtn}>
-          <Ionicons name="chevron-forward" size={20} color={Colors.primary} />
+          <Ionicons name="chevron-forward" size={20} color={TEXT_PRIMARY} />
         </TouchableOpacity>
       </View>
       <View style={cal.dayRow}>
         {DAYS_KR.map((d, i) => (
-          <Text key={i} style={[cal.dayLabel, i === 0 && { color: Colors.destructive }, i === 6 && { color: Colors.accentWarm }]}>{d}</Text>
+          <Text key={i} style={[cal.dayLabel, i === 0 && { color: '#EF4444' }, i === 6 && { color: '#3B82F6' }]}>{d}</Text>
         ))}
       </View>
       <View style={cal.grid}>
@@ -338,13 +359,17 @@ function CalendarView({
           const isUnavailable = unavailableDows ? unavailableDows.includes(dow) : false;
           return (
             <TouchableOpacity key={i} style={[cal.cell, isUnavailable && { opacity: 0.3 }]} onPress={() => onSelectDate(dateStr)}>
-              <View style={[cal.dayCircle, isSelected && cal.dayCircleSelected, isToday && !isSelected && cal.dayCircleToday]}>
+              <View style={[
+                cal.dayCircle,
+                isSelected && cal.dayCircleSelected,
+                isToday && !isSelected && cal.dayCircleToday,
+              ]}>
                 <Text style={[
                   cal.dayNum,
-                  dow === 0 && { color: Colors.destructive },
-                  dow === 6 && { color: Colors.accentWarm },
-                  isSelected && { color: '#fff' },
-                  isToday && !isSelected && { color: Colors.primary, fontWeight: '800' },
+                  dow === 0 && { color: '#EF4444' },
+                  dow === 6 && { color: '#3B82F6' },
+                  isSelected && { color: '#fff', fontWeight: '800' },
+                  isToday && !isSelected && { color: TERRA, fontWeight: '800' },
                 ]}>{day}</Text>
               </View>
               {hasLesson && <View style={[cal.dot, isSelected && { backgroundColor: '#fff' }]} />}
@@ -357,19 +382,21 @@ function CalendarView({
 }
 
 const cal = StyleSheet.create({
-  container: { backgroundColor: '#fff', borderRadius: Radius.xl, marginHorizontal: 16, marginTop: 12, padding: 16, ...Shadow.sm },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  container: { backgroundColor: CARD_WHITE, borderRadius: 20, marginHorizontal: 20, marginTop: 16, padding: 16, ...Shadow.sm },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   navBtn: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: 16, fontWeight: '800', color: Colors.primary },
+  title: { fontSize: 16, fontWeight: '800', color: TEXT_PRIMARY },
+  todayBtn: { backgroundColor: LESSON_CARD_BG, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
+  todayBtnText: { fontSize: 12, fontWeight: '700', color: TERRA },
   dayRow: { flexDirection: 'row', marginBottom: 4 },
-  dayLabel: { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: Colors.mutedFg, paddingVertical: 4 },
+  dayLabel: { flex: 1, textAlign: 'center', fontSize: 13, fontWeight: '600', color: TEXT_MUTED, paddingVertical: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: '14.28%', alignItems: 'center', paddingVertical: 3 },
-  dayCircle: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  dayCircleSelected: { backgroundColor: Colors.primary },
-  dayCircleToday: { backgroundColor: Colors.primary + '18' },
-  dayNum: { fontSize: 14, color: Colors.foreground },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.primary, marginTop: 1 },
+  dayCircle: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+  dayCircleSelected: { backgroundColor: TERRA },
+  dayCircleToday: { borderWidth: 1.5, borderColor: TERRA },
+  dayNum: { fontSize: 14, color: TEXT_PRIMARY },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: TERRA, marginTop: 1 },
 });
 
 // ── 메인 ──────────────────────────────────────────────────
@@ -398,7 +425,6 @@ export default function ScheduleScreen() {
     }
   }, [dateParam]);
 
-  // 레슨 상세 모달
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [reportModal, setReportModal] = useState(false);
 
@@ -407,7 +433,6 @@ export default function ScheduleScreen() {
     if (!mem) { setLoading(false); return; }
     setMember(mem);
 
-    // 패키지 정보 (duration + title)
     if (mem.lesson_package_id) {
       const { data: pkg } = await supabase.from('lesson_packages').select('title, duration_minutes').eq('id', mem.lesson_package_id).maybeSingle();
       if (pkg) {
@@ -416,14 +441,13 @@ export default function ScheduleScreen() {
       }
     }
 
-    // 레슨 (3개월 전부터) - lesson_id 목록 조회 후 lessons 별도 쿼리
     const threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     const threeMonthsAgoStr = toKSTDateStr(threeMonthsAgo);
     const { data: lmRows } = await supabase
       .from('lesson_members')
       .select('lesson_id')
       .eq('member_id', mem.id);
-    const ids = (lmRows ?? []).map((r: any) => r.lesson_id).filter(Boolean);
+    const ids = (lmRows ?? []).map((r: { lesson_id: string }) => r.lesson_id).filter(Boolean);
     if (ids.length > 0) {
       const { data: ld } = await supabase
         .from('lessons')
@@ -437,7 +461,6 @@ export default function ScheduleScreen() {
       setLessons([]);
     }
 
-    // 결제
     const { data: pd } = await supabase.from('payments').select('*')
       .eq('member_id', mem.id).order('due_date', { ascending: false });
     setPayments(pd ?? []);
@@ -446,7 +469,6 @@ export default function ScheduleScreen() {
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
-  // ── Realtime 구독: 코치가 레슨 생성/수정/삭제하면 즉시 반영 ──────────
   useEffect(() => {
     let ch: ReturnType<typeof supabase.channel> | null = null;
 
@@ -455,7 +477,6 @@ export default function ScheduleScreen() {
       if (!mem) return;
 
       ch = supabase.channel('member_lesson_sync_' + mem.id)
-        // 1) lesson_members INSERT/DELETE → 내 레슨 목록 변경
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
@@ -468,7 +489,6 @@ export default function ScheduleScreen() {
           table: 'lesson_members',
           filter: `member_id=eq.${mem.id}`,
         }, () => loadData())
-        // 2) lessons UPDATE/DELETE (코치 소유) → 시간·정보 변경
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
@@ -481,7 +501,6 @@ export default function ScheduleScreen() {
           table: 'lessons',
           filter: `coach_id=eq.${mem.coach_id}`,
         }, () => loadData())
-        // 3) lesson_requests 상태 변경 → MakeupTab 즉시 반영
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
@@ -498,9 +517,9 @@ export default function ScheduleScreen() {
 
   const lessonDateSet = new Set(lessons.map(l => l.date));
   const dayLessons = lessons.filter(l => l.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time));
-  const upcomingLessons = lessons.filter(l => l.date >= today).sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time)).slice(0, 5);
   const completedCount = lessons.filter(l => l.date < today).length;
   const totalCredits = member?.total_credits ?? 0;
+  const remainingCredits = member?.remaining_credits ?? 0;
   const progress = totalCredits > 0 ? Math.min(completedCount / totalCredits, 1) : 0;
   const unpaid = payments.filter(p => p.status !== '납부완료');
   const totalUnpaid = unpaid.reduce((s, p) => s + (p.amount - p.paid_amount), 0);
@@ -511,49 +530,75 @@ export default function ScheduleScreen() {
     const times = member.fixed_schedule_times;
     return member.fixed_schedule_days.map(d => {
       const t = times?.[String(d)]?.[0] ?? member.fixed_schedule_time?.slice(0, 5) ?? '';
-      return `${DAYS_KR[d]}요일 ${t}`;
+      return `${DAYS_KR[d]} ${t}`;
     }).join(' · ');
   })();
+
+  // 가장 최근 완료된 레슨 (지난 레슨 목표)
+  const lastPastLesson = lessons.find(l => l.date < today && l.notes);
+
+  const TABS: [MainTab, string][] = [
+    ['schedule', '일정'],
+    ['makeup', '가능 시간'],
+    ['payment', '결제'],
+    ['report', '성장 기록'],
+  ];
 
   if (loading) return <ScheduleSkeleton />;
 
   return (
-    <View style={s.container}>
-      {/* 탭 */}
+    <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
+      {/* ── 상단 헤더 ── */}
+      <View style={s.header}>
+        <Text style={s.headerTitle}>내 일정</Text>
+        <TouchableOpacity style={s.headerIconBtn}>
+          <Ionicons name="notifications-outline" size={22} color={TEXT_PRIMARY} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── 탭 바 ── */}
       <View style={s.tabRow}>
-        {([['schedule','일정'],['makeup','레슨 가능 시간'],['payment','결제'],['report','성장리포트']] as [MainTab,string][]).map(([key, label]) => (
-          <TouchableOpacity key={key} style={[s.tabBtn, tab === key && s.tabBtnActive]} onPress={() => setTab(key)}>
-            <Text style={[s.tabText, tab === key && s.tabTextActive]} numberOfLines={1}>{label}</Text>
+        {TABS.map(([key, label]) => (
+          <TouchableOpacity
+            key={key}
+            style={[s.tabBtn, tab === key && s.tabBtnActive]}
+            onPress={() => setTab(key)}>
+            <Text style={[s.tabText, tab === key && s.tabTextActive]}>{label}</Text>
             {key === 'payment' && unpaid.length > 0 && (
               <View style={s.tabBadge}><Text style={s.tabBadgeText}>{unpaid.length}</Text></View>
             )}
+            {tab === key && <View style={s.tabUnderline} />}
           </TouchableOpacity>
         ))}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }} tintColor={Colors.primary} />}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => { setRefreshing(true); await loadData(); setRefreshing(false); }}
+            tintColor={TERRA}
+          />
+        }
       >
-        {/* ── 레슨 진행률 카드 (일정·보강 탭에서 표시) ── */}
+        {/* ── 레슨권 요약 카드 (일정·가능 시간 탭) ── */}
         {(tab === 'schedule' || tab === 'makeup') && member && (
-          <View style={s.progressCard}>
-            <View style={s.progressTop}>
-              <View>
-                <Text style={s.progressTitle}>레슨 진행률</Text>
-                <Text style={s.progressSub}>{packageTitle || '레슨권'}</Text>
-              </View>
-              <Text style={s.progressCount}>{completedCount}/{totalCredits}회 완료</Text>
+          <View style={s.lessonSummaryCard}>
+            <Text style={s.lessonSummaryTitle}>{packageTitle || '레슨권'}</Text>
+            <View style={s.lessonSummaryRow}>
+              <Text style={s.lessonRemaining}>{remainingCredits}회 남았어요</Text>
+              <Text style={s.lessonCompletedText}>{completedCount} / {totalCredits}회 완료</Text>
             </View>
             <View style={s.progressBar}>
               <View style={[s.progressFill, { width: `${progress * 100}%` as any }]} />
             </View>
             {fixedScheduleText && (
-              <View style={s.scheduleChips}>
-                <Ionicons name="time-outline" size={14} color={Colors.mutedFg} />
-                <Text style={s.scheduleChipText}>{fixedScheduleText}</Text>
+              <View style={s.scheduleRow}>
+                <Ionicons name="time-outline" size={14} color={TERRA} />
+                <Text style={s.scheduleText}>{fixedScheduleText}</Text>
               </View>
             )}
-
           </View>
         )}
 
@@ -563,7 +608,11 @@ export default function ScheduleScreen() {
             <CalendarView
               year={calMonth.year} month={calMonth.month}
               selectedDate={selectedDate} lessonDates={lessonDateSet}
-              onSelectDate={setSelectedDate}
+              onSelectDate={(d) => {
+                setSelectedDate(d);
+                const dt = new Date(d + 'T00:00:00');
+                setCalMonth({ year: dt.getFullYear(), month: dt.getMonth() });
+              }}
               onPrevMonth={() => setCalMonth(p => {
                 const m = p.month - 1; return m < 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: m };
               })}
@@ -572,54 +621,40 @@ export default function ScheduleScreen() {
               })}
             />
 
-            {/* 범례 */}
-            <View style={s.legendRow}>
-              <View style={s.legendItem}><View style={[s.legendDot, { backgroundColor: Colors.primary }]} /><Text style={s.legendText}>레슨</Text></View>
-            </View>
-
-            {/* 선택한 날짜 레슨 */}
-            <View style={s.section}>
-              <Text style={s.sectionTitle}>
-                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })} 레슨
+            {/* 선택 날짜 레슨 목록 */}
+            <View style={s.daySection}>
+              <Text style={s.daySectionTitle}>
+                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}
+                {' '}레슨 {dayLessons.length > 0 ? `${dayLessons.length}건` : ''}
               </Text>
               {dayLessons.length === 0 ? (
                 <View style={s.empty}>
-                  <Ionicons name="calendar-outline" size={32} color={Colors.iconMuted} />
+                  <Ionicons name="calendar-outline" size={32} color={TEXT_MUTED} />
                   <Text style={s.emptyText}>이 날엔 레슨이 없어요</Text>
                 </View>
               ) : (
-                dayLessons.map(l => <LessonCard key={l.id} lesson={l} today={today}
-                  onPress={() => { setSelectedLesson(l); setReportModal(true); }} />)
-              )}
-            </View>
-
-            {/* 다가오는 일정 */}
-            <View style={s.section}>
-              <Text style={s.sectionTitle}>다가오는 레슨</Text>
-              {upcomingLessons.length === 0 ? (
-                <View style={s.empty}>
-                  <Text style={s.emptyText}>예정된 레슨이 없어요</Text>
-                </View>
-              ) : (
-                upcomingLessons.map(l => (
-                  <TouchableOpacity key={l.id} style={s.upcomingCard}
-                    onPress={() => { setSelectedDate(l.date); setCalMonth({ year: parseInt(l.date.slice(0,4)), month: parseInt(l.date.slice(5,7)) - 1 }); }}>
-                    <View style={s.upcomingBar} />
-                    <View style={s.upcomingInfo}>
-                      <Text style={s.upcomingTitle}>{l.title}</Text>
-                      <Text style={s.upcomingDate}>
-                        {new Date(l.date+'T00:00:00').toLocaleDateString('ko-KR',{month:'short',day:'numeric',weekday:'short'})} · {l.start_time.slice(0,5)}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={15} color={Colors.iconMuted} />
-                  </TouchableOpacity>
+                dayLessons.map(l => (
+                  <ScheduleLessonCard
+                    key={l.id}
+                    lesson={l}
+                    today={today}
+                    onPress={() => { setSelectedLesson(l); setReportModal(true); }}
+                  />
                 ))
               )}
             </View>
+
+            {/* 지난 레슨 목표 연결 */}
+            {lastPastLesson && (
+              <View style={s.goalCard}>
+                <Text style={s.goalLabel}>지난 레슨에서 이어갈 목표</Text>
+                <Text style={s.goalContent} numberOfLines={3}>{lastPastLesson.notes}</Text>
+              </View>
+            )}
           </>
         )}
 
-        {/* ── 레슨 가능 시간 탭 ── */}
+        {/* ── 가능 시간 탭 ── */}
         {tab === 'makeup' && (
           <MakeupTab memberId={member?.id ?? null} coachId={member?.coach_id ?? null} lessonDuration={pkgDuration} />
         )}
@@ -635,7 +670,7 @@ export default function ScheduleScreen() {
               </View>
             )}
             {totalUnpaid > 0 && (
-              <View style={[s.creditBanner, { backgroundColor: Colors.destructive, margin: 16, marginTop: 0 }]}>
+              <View style={[s.creditBanner, { backgroundColor: '#EF4444', margin: 20, marginTop: 0 }]}>
                 <Ionicons name="alert-circle" size={18} color="#fff" />
                 <Text style={s.creditBannerText}>미납 금액 <Text style={{ fontWeight: '900' }}>{totalUnpaid.toLocaleString()}원</Text></Text>
               </View>
@@ -650,12 +685,12 @@ export default function ScheduleScreen() {
                         <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
                         <Text style={s.payDate}>납부기한: {p.due_date}</Text>
                       </View>
-                      <View style={[s.ddayBadge, { backgroundColor: dday.urgent ? Colors.destructive : Colors.warning }]}>
+                      <View style={[s.ddayBadge, { backgroundColor: dday.urgent ? '#EF4444' : '#EAB308' }]}>
                         <Text style={s.ddayText}>{dday.label}</Text>
                       </View>
                     </View>
                     <View style={s.payCardBottom}>
-                      <Text style={[s.payAmount, { color: Colors.destructive }]}>{(p.amount - p.paid_amount).toLocaleString()}원</Text>
+                      <Text style={[s.payAmount, { color: '#EF4444' }]}>{(p.amount - p.paid_amount).toLocaleString()}원</Text>
                       <TouchableOpacity style={s.payNowBtn}
                         onPress={() => Alert.alert('결제 안내', `${(p.amount - p.paid_amount).toLocaleString()}원\n코치에게 연락해 결제해주세요.`)}>
                         <Ionicons name="card-outline" size={14} color="#fff" />
@@ -670,10 +705,10 @@ export default function ScheduleScreen() {
                   <View style={s.payCardTop}>
                     <View>
                       <Text style={s.payDesc}>{p.description || '레슨비'}</Text>
-                      <Text style={s.payDate}>납부일: {(p as any).paid_date ?? p.due_date}</Text>
+                      <Text style={s.payDate}>납부일: {(p as { paid_date?: string }).paid_date ?? p.due_date}</Text>
                     </View>
-                    <View style={[s.statusBadge, { backgroundColor: Colors.primaryLight ?? '#e6f9f0' }]}>
-                      <Text style={[s.statusText, { color: Colors.primary }]}>납부완료</Text>
+                    <View style={[s.statusBadge, { backgroundColor: '#FBF2EF' }]}>
+                      <Text style={[s.statusBadgeText, { color: TERRA }]}>납부완료</Text>
                     </View>
                   </View>
                   <Text style={s.payAmount}>{p.amount.toLocaleString()}원</Text>
@@ -681,7 +716,7 @@ export default function ScheduleScreen() {
               ))}
               {payments.length === 0 && (
                 <View style={s.empty}>
-                  <Ionicons name="card-outline" size={40} color={Colors.iconMuted} />
+                  <Ionicons name="card-outline" size={40} color={TEXT_MUTED} />
                   <Text style={s.emptyText}>결제 내역이 없어요</Text>
                 </View>
               )}
@@ -689,17 +724,17 @@ export default function ScheduleScreen() {
           </>
         )}
 
-        {/* ── 성장 리포트 탭 ── */}
+        {/* ── 성장 기록 탭 ── */}
         {tab === 'report' && (
           <View style={s.section}>
             <Text style={s.sectionTitle}>레슨 기록</Text>
             {lessons.length === 0 ? (
               <View style={s.empty}>
-                <Ionicons name="document-text-outline" size={40} color={Colors.iconMuted} />
+                <Ionicons name="document-text-outline" size={40} color={TEXT_MUTED} />
                 <Text style={s.emptyText}>레슨 기록이 없어요</Text>
               </View>
             ) : (
-              lessons.sort((a,b) => b.date.localeCompare(a.date)).map(l => (
+              lessons.sort((a, b) => b.date.localeCompare(a.date)).map(l => (
                 <TouchableOpacity key={l.id} style={s.reportCard}
                   onPress={() => { setSelectedLesson(l); setReportModal(true); }}>
                   <View style={s.reportLeft}>
@@ -713,11 +748,11 @@ export default function ScheduleScreen() {
                     {l.notes ? (
                       <Text style={s.reportPreview} numberOfLines={1}>📋 {l.notes}</Text>
                     ) : (
-                      <Text style={[s.reportPreview, { color: Colors.placeholder }]}>리포트 없음</Text>
+                      <Text style={[s.reportPreview, { color: TEXT_MUTED }]}>리포트 없음</Text>
                     )}
                   </View>
-                  <View style={[s.reportStatus, { backgroundColor: l.date < today ? Colors.mutedBg : Colors.primary + '15' }]}>
-                    <Text style={[s.reportStatusText, { color: l.date < today ? Colors.mutedFg : Colors.primary }]}>
+                  <View style={[s.reportStatus, { backgroundColor: l.date < today ? '#F4F6F9' : TERRA + '15' }]}>
+                    <Text style={[s.reportStatusText, { color: l.date < today ? TEXT_MUTED : TERRA }]}>
                       {l.date < today ? '완료' : l.date === today ? '오늘' : '예정'}
                     </Text>
                   </View>
@@ -727,10 +762,10 @@ export default function ScheduleScreen() {
           </View>
         )}
 
-        <View style={{ height: 80 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* 레슨 상세 모달 */}
+      {/* ── 레슨 상세 모달 ── */}
       <Modal visible={reportModal} transparent animationType="slide" onRequestClose={() => setReportModal(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalSheet}>
@@ -744,13 +779,13 @@ export default function ScheduleScreen() {
                 </Text>
                 {selectedLesson.location && (
                   <View style={{ flexDirection:'row', alignItems:'center', gap:4, marginBottom:12 }}>
-                    <Ionicons name="location-outline" size={14} color={Colors.mutedFg} />
-                    <Text style={{ fontSize:13, color:Colors.mutedFg }}>{selectedLesson.location}</Text>
+                    <Ionicons name="location-outline" size={14} color={TEXT_MUTED} />
+                    <Text style={{ fontSize:13, color:TEXT_MUTED }}>{selectedLesson.location}</Text>
                   </View>
                 )}
                 <View style={s.reportBox}>
                   <View style={s.reportBoxHeader}>
-                    <Ionicons name="document-text-outline" size={16} color={Colors.primary} />
+                    <Ionicons name="document-text-outline" size={16} color={TERRA} />
                     <Text style={s.reportBoxTitle}>코치 리포트</Text>
                   </View>
                   <Text style={s.reportBoxContent}>
@@ -765,129 +800,229 @@ export default function ScheduleScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
-function LessonCard({ lesson, today, onPress }: { lesson: Lesson; today: string; onPress: () => void }) {
-  const d = new Date(lesson.date + 'T00:00:00');
+function ScheduleLessonCard({ lesson, today, onPress }: { lesson: Lesson; today: string; onPress: () => void }) {
   const isPast = lesson.date < today;
   const isToday = lesson.date === today;
+  const statusLabel = isToday ? '오늘' : isPast ? '완료' : '예정';
+  const statusColor = isToday ? TERRA : isPast ? TEXT_MUTED : '#22C55E';
+
   return (
-    <TouchableOpacity style={[s.lessonCard, isPast && s.lessonCardPast]} onPress={onPress}>
-      <View style={[s.lessonDateBox, { backgroundColor: isPast ? Colors.mutedBg : Colors.primary + '15' }]}>
-        <Text style={[s.lessonDow, { color: isPast ? Colors.mutedFg : Colors.primary }]}>{DAYS_KR[d.getDay()]}</Text>
-        <Text style={[s.lessonDay, isPast && { color: Colors.mutedFg }]}>{d.getDate()}</Text>
-        <Text style={s.lessonMon}>{d.getMonth()+1}월</Text>
-      </View>
-      <View style={s.lessonBody}>
-        <View style={{ flexDirection:'row', alignItems:'center', gap:6, marginBottom:3 }}>
-          <Text style={[s.lessonTitle, isPast && { color: Colors.mutedFg }]}>{lesson.title}</Text>
-          {isToday && <View style={s.todayBadge}><Text style={s.todayText}>오늘</Text></View>}
-          {isPast && <View style={[s.todayBadge, { backgroundColor: Colors.mutedBg }]}><Text style={[s.todayText, { color: Colors.mutedFg }]}>완료</Text></View>}
+    <TouchableOpacity style={s.scheduleLessonCard} onPress={onPress} activeOpacity={0.7}>
+      <View style={[s.lessonLeftBorder, { backgroundColor: isPast ? DIVIDER : TERRA }]} />
+      <View style={s.lessonContent}>
+        <View style={s.lessonTopRow}>
+          <View style={[s.lessonStatusBadge, { backgroundColor: isToday ? LESSON_CARD_BG : isPast ? '#F4F6F9' : '#ECFDF5' }]}>
+            <Text style={[s.lessonStatusText, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+          <Text style={s.lessonTimeText}>{lesson.start_time.slice(0,5)} ~ {lesson.end_time.slice(0,5)}</Text>
         </View>
-        <Text style={s.lessonTime}>{lesson.start_time.slice(0,5)} ~ {lesson.end_time.slice(0,5)}</Text>
-        {lesson.notes && <Text style={[s.lessonTime, { color: Colors.primary, marginTop:3 }]} numberOfLines={1}>📋 {lesson.notes}</Text>}
+        <Text style={[s.lessonTitleText, isPast && { color: TEXT_MUTED }]}>{lesson.title}</Text>
+        {lesson.location && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
+            <Text style={s.lessonMetaText}>{lesson.location}</Text>
+          </View>
+        )}
+        {lesson.notes && (
+          <Text style={s.lessonNotesPreview} numberOfLines={1}>📋 {lesson.notes}</Text>
+        )}
       </View>
-      <Ionicons name="chevron-forward" size={15} color={Colors.placeholder} />
+      <Ionicons name="chevron-forward" size={16} color={TEXT_MUTED} />
     </TouchableOpacity>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  tabRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 6, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: Colors.border },
-  tabBtn: { flex: 1, paddingVertical: 8, borderRadius: Radius.md, alignItems: 'center', backgroundColor: Colors.mutedBg, flexDirection:'row', justifyContent:'center', gap:4 },
-  tabBtnActive: { backgroundColor: Colors.primary },
-  tabText: { fontSize: 14, fontWeight: '700', color: Colors.mutedFg },
-  tabTextActive: { color: '#fff' },
-  tabBadge: { backgroundColor: Colors.destructive, borderRadius: 8, width: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
+  // ── 헤더 ──
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
+    backgroundColor: BG,
+  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: TEXT_PRIMARY },
+  headerIconBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+
+  // ── 탭 바 ──
+  tabRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    backgroundColor: BG,
+    borderBottomWidth: 1,
+    borderBottomColor: DIVIDER,
+    marginBottom: 0,
+  },
+  tabBtn: {
+    flex: 1, alignItems: 'center', paddingVertical: 10,
+    position: 'relative', flexDirection: 'column', gap: 0,
+  },
+  tabBtnActive: {},
+  tabText: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
+  tabTextActive: { color: TERRA, fontWeight: '800' },
+  tabBadge: {
+    position: 'absolute', top: 6, right: 4,
+    backgroundColor: '#EF4444', borderRadius: 8, minWidth: 16, height: 16,
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
+  },
   tabBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  tabUnderline: {
+    position: 'absolute', bottom: 0, left: 8, right: 8,
+    height: 2, backgroundColor: TERRA, borderRadius: 1,
+  },
 
-  progressCard: { backgroundColor: '#fff', borderRadius: Radius.xl, margin: 16, marginBottom: 0, padding: 16, ...Shadow.sm },
-  progressTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  progressTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary },
-  progressSub: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
-  progressCount: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  progressBar: { height: 8, backgroundColor: Colors.mutedBg, borderRadius: 4, overflow: 'hidden', marginBottom: 10 },
-  progressFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: 4 },
-  scheduleChips: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.mutedBg, borderRadius: 8, padding: 8, marginBottom: 10 },
-  scheduleChipText: { fontSize: 13, color: Colors.mutedFg },
-  progressBtnRow: { flexDirection: 'row', gap: 8 },
-  progressBtn: { flex: 1, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 10, alignItems: 'center' },
-  progressBtnOutline: { backgroundColor: '#fff', borderWidth: 1, borderColor: Colors.border },
-  progressBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  // ── 레슨권 요약 카드 ──
+  lessonSummaryCard: {
+    backgroundColor: LESSON_CARD_BG,
+    borderRadius: 20, marginHorizontal: 20, marginTop: 16,
+    padding: 18,
+  },
+  lessonSummaryTitle: { fontSize: 13, fontWeight: '600', color: TERRA, marginBottom: 8 },
+  lessonSummaryRow: {
+    flexDirection: 'row', alignItems: 'flex-end',
+    justifyContent: 'space-between', marginBottom: 10,
+  },
+  lessonRemaining: { fontSize: 26, fontWeight: '900', color: TEXT_PRIMARY },
+  lessonCompletedText: { fontSize: 13, color: TEXT_MUTED, paddingBottom: 4 },
+  progressBar: {
+    height: 6, backgroundColor: TERRA + '30', borderRadius: 3,
+    overflow: 'hidden', marginBottom: 10,
+  },
+  progressFill: { height: '100%', backgroundColor: TERRA, borderRadius: 3 },
+  scheduleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  scheduleText: { fontSize: 13, fontWeight: '600', color: TERRA },
 
+  // ── 달력 아래 섹션 ──
+  daySection: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
+  daySectionTitle: { fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 12 },
+
+  // ── 일정 레슨 카드 ──
+  scheduleLessonCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: CARD_WHITE, borderRadius: 16,
+    marginBottom: 10, overflow: 'hidden',
+    ...Shadow.sm,
+  },
+  lessonLeftBorder: { width: 4, alignSelf: 'stretch' },
+  lessonContent: { flex: 1, padding: 14 },
+  lessonTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  lessonStatusBadge: {
+    borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  lessonStatusText: { fontSize: 11, fontWeight: '700' },
+  lessonTimeText: { fontSize: 13, fontWeight: '600', color: TEXT_PRIMARY },
+  lessonTitleText: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  lessonMetaText: { fontSize: 12, color: TEXT_MUTED },
+  lessonNotesPreview: { fontSize: 12, color: TEXT_MUTED, marginTop: 4 },
+
+  // ── 목표 카드 ──
+  goalCard: {
+    backgroundColor: GOAL_BG, borderRadius: 16,
+    marginHorizontal: 20, marginTop: 4, marginBottom: 8,
+    padding: 16,
+  },
+  goalLabel: { fontSize: 12, fontWeight: '700', color: TERRA, marginBottom: 6 },
+  goalContent: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 20 },
+
+  // ── 범례 ──
   legendRow: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 8, gap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 14, color: Colors.mutedFg },
+  legendText: { fontSize: 13, color: TEXT_MUTED },
 
-  section: { padding: 16 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: Colors.primary, marginBottom: 12 },
+  // ── 공통 섹션 ──
+  section: { paddingHorizontal: 20, paddingTop: 16 },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 12 },
   empty: { alignItems: 'center', padding: 32, gap: 8 },
-  emptyText: { fontSize: 14, color: Colors.placeholder, textAlign: 'center' },
+  emptyText: { fontSize: 14, color: TEXT_MUTED, textAlign: 'center' },
 
-  lessonCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm },
-  lessonCardPast: { backgroundColor: Colors.mutedBg },
-  lessonDateBox: { borderRadius: Radius.md, padding: 10, alignItems: 'center', marginRight: 14, minWidth: 48 },
-  lessonDow: { fontSize: 12, fontWeight: '700' },
-  lessonDay: { fontSize: 20, fontWeight: '900', color: Colors.primary },
-  lessonMon: { fontSize: 12, color: Colors.mutedFg },
-  lessonBody: { flex: 1 },
-  lessonTitle: { fontSize: 15, fontWeight: '700', color: Colors.primary, flex: 1 },
-  lessonTime: { fontSize: 14, color: Colors.mutedFg },
-  todayBadge: { backgroundColor: Colors.primary, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  todayText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-  upcomingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm, gap: 10 },
-  upcomingBar: { width: 4, height: 40, borderRadius: 2, backgroundColor: Colors.primary },
+  // ── 보강 탭 upcoming 카드 ──
+  upcomingCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: CARD_WHITE, borderRadius: 14,
+    marginBottom: 8, padding: 14, ...Shadow.sm, gap: 10,
+  },
   upcomingInfo: { flex: 1 },
-  upcomingTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  upcomingDate: { fontSize: 14, color: Colors.mutedFg, marginTop: 2 },
+  upcomingTitle: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
+  upcomingDate: { fontSize: 13, color: TEXT_MUTED, marginTop: 2 },
+  statusBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  statusBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 
-  creditBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primary, margin: 16, marginBottom: 8, borderRadius: Radius.lg, padding: 14, gap: 8 },
+  // ── 결제 탭 ──
+  creditBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: TERRA, margin: 20, marginBottom: 8,
+    borderRadius: 14, padding: 14, gap: 8,
+  },
   creditBannerText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#fff' },
   creditBannerNum: { fontWeight: '900', fontSize: 17 },
-  lowBadge: { backgroundColor: Colors.warning, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
-  lowBadgeText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  lowBadge: { backgroundColor: '#EAB308', borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
+  lowBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
-  payCard: { backgroundColor: '#fff', borderRadius: Radius.xl, marginBottom: 10, padding: 16, borderWidth: 1.5, borderColor: Colors.border, ...Shadow.sm },
-  payCardUrgent: { borderColor: Colors.destructive, backgroundColor: '#fff5f5' },
-  payCardDone: { backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, borderWidth: 1, borderColor: Colors.border },
+  payCard: {
+    backgroundColor: CARD_WHITE, borderRadius: 16,
+    marginBottom: 10, padding: 16,
+    borderWidth: 1.5, borderColor: DIVIDER, ...Shadow.sm,
+  },
+  payCardUrgent: { borderColor: '#EF4444', backgroundColor: '#fff5f5' },
+  payCardDone: {
+    backgroundColor: CARD_WHITE, borderRadius: 14,
+    marginBottom: 8, padding: 14,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
   payCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
   payCardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  payDesc: { fontSize: 15, fontWeight: '700', color: Colors.primary, marginBottom: 2 },
-  payDate: { fontSize: 14, color: Colors.mutedFg },
-  payAmount: { fontSize: 20, fontWeight: '900', color: Colors.primary },
-  payNowBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.primary, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 9 },
+  payDesc: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 2 },
+  payDate: { fontSize: 13, color: TEXT_MUTED },
+  payAmount: { fontSize: 20, fontWeight: '900', color: TEXT_PRIMARY },
+  payNowBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: TERRA, borderRadius: Radius.md,
+    paddingHorizontal: 14, paddingVertical: 9,
+  },
   payNowText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   ddayBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  ddayText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  statusBadge: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  statusText: { fontSize: 13, fontWeight: '700' },
+  ddayText: { color: '#fff', fontSize: 12, fontWeight: '800' },
 
-  reportCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: Radius.lg, marginBottom: 8, padding: 14, ...Shadow.sm },
+  // ── 성장 기록 탭 ──
+  reportCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: CARD_WHITE, borderRadius: 14,
+    marginBottom: 8, padding: 14, ...Shadow.sm,
+  },
   reportLeft: { alignItems: 'center', minWidth: 44, marginRight: 14 },
-  reportDow: { fontSize: 12, fontWeight: '700', color: Colors.primary },
-  reportDay: { fontSize: 20, fontWeight: '900', color: Colors.primary },
-  reportMon: { fontSize: 12, color: Colors.mutedFg },
+  reportDow: { fontSize: 12, fontWeight: '700', color: TERRA },
+  reportDay: { fontSize: 20, fontWeight: '900', color: TEXT_PRIMARY },
+  reportMon: { fontSize: 12, color: TEXT_MUTED },
   reportBody: { flex: 1 },
-  reportTitle: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  reportTime: { fontSize: 14, color: Colors.mutedFg, marginTop: 1 },
-  reportPreview: { fontSize: 14, color: Colors.primary, marginTop: 3 },
+  reportTitle: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
+  reportTime: { fontSize: 13, color: TEXT_MUTED, marginTop: 1 },
+  reportPreview: { fontSize: 13, color: TERRA, marginTop: 3 },
   reportStatus: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8 },
-  reportStatusText: { fontSize: 13, fontWeight: '700' },
+  reportStatusText: { fontSize: 12, fontWeight: '700' },
 
+  // ── 모달 ──
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
-  modalHandle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
-  modalDate: { fontSize: 13, color: Colors.mutedFg, marginBottom: 16 },
-  reportBox: { backgroundColor: Colors.mutedBg, borderRadius: Radius.lg, padding: 14, marginBottom: 16 },
+  modalSheet: {
+    backgroundColor: CARD_WHITE,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 44,
+  },
+  modalHandle: {
+    width: 40, height: 4, backgroundColor: DIVIDER,
+    borderRadius: 2, alignSelf: 'center', marginBottom: 20,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY, marginBottom: 6 },
+  modalDate: { fontSize: 13, color: TEXT_MUTED, marginBottom: 16 },
+  reportBox: { backgroundColor: '#F4F6F9', borderRadius: 14, padding: 14, marginBottom: 16 },
   reportBoxHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  reportBoxTitle: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  reportBoxContent: { fontSize: 14, color: Colors.foreground, lineHeight: 22 },
-  modalCloseBtn: { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 14, alignItems: 'center' },
+  reportBoxTitle: { fontSize: 13, fontWeight: '700', color: TERRA },
+  reportBoxContent: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 22 },
+  modalCloseBtn: {
+    backgroundColor: TERRA, borderRadius: Radius.md,
+    paddingVertical: 14, alignItems: 'center',
+  },
   modalCloseBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
