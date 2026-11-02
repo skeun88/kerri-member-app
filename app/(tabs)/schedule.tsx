@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
+import { notifyCoachBoganRequest } from '../../lib/notifications';
 import { Radius, Shadow } from '../../lib/theme';
 import { ScheduleSkeleton } from '../../components/Skeleton';
 import {
@@ -214,16 +215,26 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
     setSending(true);
     const startMin = tMin(bookingSlot + ':00');
     const endMin = startMin + lessonDuration;
-    const { error } = await supabase.from('lesson_requests').insert({
+    const startTimeFull = bookingSlot + ':00';
+    const { data: inserted, error } = await supabase.from('lesson_requests').insert({
       coach_id: coachId, member_id: memberId,
       requested_date: selectedDate,
-      start_time: bookingSlot + ':00',
+      start_time: startTimeFull,
       end_time: mStr(endMin) + ':00',
       message: bookingMsg.trim() || null,
       status: 'pending',
-    });
+    }).select('id').single();
     setSending(false);
-    if (error) { Alert.alert('오류', '예약 요청 실패'); return; }
+    if (error || !inserted) { Alert.alert('오류', '예약 요청 실패'); return; }
+
+    // 코치에게 보강 요청 푸시 알림
+    const member = await getMyMemberRow();
+    if (member && selectedDate) {
+      notifyCoachBoganRequest(
+        coachId, member.name, inserted.id, selectedDate, startTimeFull, memberId,
+      ).catch(() => {});
+    }
+
     setBookingModal(false);
     setBookingSlot(null);
     setBookingMsg('');

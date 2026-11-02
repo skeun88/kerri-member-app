@@ -52,6 +52,46 @@ export async function registerMemberPushToken() {
   }, { onConflict: 'member_id' });
 }
 
+// PN-14: 회원 → 코치 보강 요청 알림
+export async function notifyCoachBoganRequest(
+  coachId: string,
+  memberName: string,
+  requestId: string,
+  date: string,
+  startTime: string,
+  memberId: string,
+) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  const SUPABASE_URL_LOCAL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+  const dateObj = new Date(`${date}T00:00:00+09:00`);
+  const dateFormatted = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+
+  await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/send-push`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      recipient_type: 'coach',
+      recipient_id: coachId,
+      title: '보강 레슨 요청',
+      body: `${memberName}님이 ${dateFormatted} ${startTime.slice(0, 5)} 보강을 요청했어요.`,
+      data: {
+        screen: 'schedule',
+        type: 'bogan_request',
+        request_id: requestId,
+        member_id: memberId,
+        lesson_date: date,
+        start_time: startTime,
+      },
+      notif_id: 'PN-14',
+    }),
+  }).catch(() => {});
+}
+
 // PN-03: 회원 → 코치 메시지 알림
 export async function notifyCoachMessage(coachId: string, memberName: string) {
   const { data: { session } } = await supabase.auth.getSession();
