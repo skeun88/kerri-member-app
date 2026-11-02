@@ -329,6 +329,69 @@ function InsightsCard({ reports }: { reports: CoachReport[] }) {
   );
 }
 
+// ── Growth changes preview ─────────────────────────────────────
+interface FlatChangeItem {
+  date: string;
+  point: string;
+  status: 'improved' | 'same' | 'needs_work' | 'regressed';
+  reason?: string;
+}
+
+function getChangeBadge(status: string): { label: string; bg: string; text: string } {
+  switch (status) {
+    case 'improved':   return { label: '좋아졌어요',        bg: '#E8F5E9', text: '#2E7D32' };
+    case 'maintained':
+    case 'same':       return { label: '잘 유지하고 있어요', bg: '#E3F2FD', text: '#1565C0' };
+    case 'needs_work': return { label: '연습이 필요해요',    bg: '#FFF3E0', text: '#E65100' };
+    case 'regressed':  return { label: '다시 점검해요',      bg: '#FFEBEE', text: '#C62828' };
+    default:           return { label: '기록중',             bg: BG,        text: TEXT_MUTED };
+  }
+}
+
+function GrowthChangesPreview({ reports }: { reports: CoachReport[] }) {
+  const router = useRouter();
+
+  const items: FlatChangeItem[] = [];
+  for (const r of reports) {
+    if (!r.lesson_comparison || r.lesson_comparison.length === 0) continue;
+    for (const c of r.lesson_comparison) {
+      items.push({ date: r.created_at, point: c.point, status: c.status, reason: c.reason });
+      if (items.length >= 2) break;
+    }
+    if (items.length >= 2) break;
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={pv.card}>
+      <View style={pv.headerRow}>
+        <Text style={pv.title}>이전 대비 변화</Text>
+        <TouchableOpacity onPress={() => router.push('/growth-changes' as never)}>
+          <Text style={pv.linkText}>전체 변화 기록 보기 →</Text>
+        </TouchableOpacity>
+      </View>
+      {items.map((item, i) => {
+        const badge = getChangeBadge(item.status);
+        return (
+          <View key={i} style={[pv.item, i < items.length - 1 && pv.itemBorder]}>
+            <Text style={pv.itemDate}>{formatDate(item.date)}</Text>
+            <View style={pv.itemRow}>
+              <Text style={pv.itemPoint} numberOfLines={2}>{item.point}</Text>
+              <View style={[pv.badge, { backgroundColor: badge.bg }]}>
+                <Text style={[pv.badgeText, { color: badge.text }]}>{badge.label}</Text>
+              </View>
+            </View>
+            {!!item.reason && (
+              <Text style={pv.itemReason} numberOfLines={2}>{item.reason}</Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 // ── Main screen ────────────────────────────────────────────────
 export default function ReportScreen() {
   const router = useRouter();
@@ -556,7 +619,10 @@ export default function ReportScreen() {
             {/* ② 성장 그래프 */}
             <GrowthChartCard reports={reports} />
 
-            {/* ③ 핵심 인사이트 */}
+            {/* ③ 이전 대비 변화 미리보기 */}
+            <GrowthChangesPreview reports={reports} />
+
+            {/* ④ 핵심 인사이트 */}
             <InsightsCard reports={reports} />
 
             {/* ④ 레슨 기록 목록 */}
@@ -853,4 +919,32 @@ const styles = StyleSheet.create({
   compBadgeTextNeeds: { color: TERRA },
   compBadgeTextNeutral: { color: TEXT_MUTED },
   compReason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 20, marginTop: 4 },
+});
+
+const pv = StyleSheet.create({
+  card: {
+    backgroundColor: CARD_WHITE, borderRadius: 20, padding: 20,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 2,
+  },
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 16,
+  },
+  title: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  linkText: { fontSize: 13, color: TERRA, fontWeight: '600' },
+  item: { paddingVertical: 10 },
+  itemBorder: { borderBottomWidth: 1, borderBottomColor: DIVIDER },
+  itemDate: { fontSize: 12, color: TEXT_MUTED, marginBottom: 6 },
+  itemRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    justifyContent: 'space-between', gap: 8,
+  },
+  itemPoint: {
+    fontSize: 14, color: TEXT_PRIMARY, fontWeight: '600',
+    flex: 1, lineHeight: 20,
+  },
+  badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  itemReason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 20, marginTop: 4 },
 });
