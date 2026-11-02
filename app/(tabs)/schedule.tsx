@@ -10,6 +10,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Radius, Shadow } from '../../lib/theme';
 import { ScheduleSkeleton } from '../../components/Skeleton';
+import {
+  GrowthReport, GradeCard, GrowthChartCard, InsightsCard, GrowthChangesPreview,
+  deriveChangeStatus, calculateScore,
+} from '../../components/GrowthDashboard';
 
 // ── Design tokens (홈 화면과 동일 팔레트) ──────────────────────
 const BG = '#F7F7F5';
@@ -507,6 +511,7 @@ export default function ScheduleScreen() {
   const [memberReports, setMemberReports] = useState<MemberReport[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [payDetailModal, setPayDetailModal] = useState(false);
+  const [growthReports, setGrowthReports] = useState<GrowthReport[]>([]);
 
   const router = useRouter();
   const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
@@ -576,6 +581,19 @@ export default function ScheduleScreen() {
 
     const { data: reports } = await supabase.from('member_lesson_reports').select('lesson_date, improvement_points').eq('member_id', mem.id).eq('sent_to_member', true).not('improvement_points', 'is', null).order('lesson_date', { ascending: false });
     setMemberReports(reports ?? []);
+
+    const { data: planData } = await supabase
+      .from('member_lesson_plan_view')
+      .select('id, created_at, lesson_comparison, next_goals')
+      .eq('member_id', mem.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setGrowthReports((planData ?? []).map((p: { id: string; created_at: string; lesson_comparison: unknown; next_goals: unknown }) => ({
+      plan_id: p.id,
+      created_at: p.created_at,
+      lesson_comparison: Array.isArray(p.lesson_comparison) ? p.lesson_comparison : null,
+      next_goals_raw: (p.next_goals as string[] | string | null) ?? null,
+    })));
 
     setLoading(false);
   }
@@ -888,42 +906,25 @@ export default function ScheduleScreen() {
         )}
 
         {/* ── 성장 기록 탭 ── */}
-        {tab === 'report' && (
-          <View style={s.section}>
-            <Text style={s.sectionTitle}>레슨 기록</Text>
-            {lessons.length === 0 ? (
-              <View style={s.empty}>
-                <Ionicons name="document-text-outline" size={40} color={TEXT_MUTED} />
-                <Text style={s.emptyText}>레슨 기록이 없어요</Text>
-              </View>
-            ) : (
-              lessons.sort((a, b) => b.date.localeCompare(a.date)).map(l => (
-                <TouchableOpacity key={l.id} style={s.reportCard}
-                  onPress={() => { setSelectedLesson(l); setReportModal(true); }}>
-                  <View style={s.reportLeft}>
-                    <Text style={s.reportDow}>{DAYS_KR[new Date(l.date+'T00:00:00').getDay()]}</Text>
-                    <Text style={s.reportDay}>{new Date(l.date+'T00:00:00').getDate()}</Text>
-                    <Text style={s.reportMon}>{new Date(l.date+'T00:00:00').getMonth()+1}월</Text>
-                  </View>
-                  <View style={s.reportBody}>
-                    <Text style={s.reportTitle}>{l.title}</Text>
-                    <Text style={s.reportTime}>{l.start_time.slice(0,5)} ~ {l.end_time.slice(0,5)}</Text>
-                    {l.notes ? (
-                      <Text style={s.reportPreview} numberOfLines={1}>📋 {l.notes}</Text>
-                    ) : (
-                      <Text style={[s.reportPreview, { color: TEXT_MUTED }]}>리포트 없음</Text>
-                    )}
-                  </View>
-                  <View style={[s.reportStatus, { backgroundColor: l.date < today ? '#F4F6F9' : TERRA + '15' }]}>
-                    <Text style={[s.reportStatusText, { color: l.date < today ? TEXT_MUTED : TERRA }]}>
-                      {l.date < today ? '완료' : l.date === today ? '오늘' : '예정'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        )}
+        {tab === 'report' && (() => {
+          const totalScore = growthReports.reduce((sum, r) => {
+            const status = deriveChangeStatus(r.lesson_comparison);
+            return sum + calculateScore(status, true);
+          }, 0);
+          return growthReports.length === 0 ? (
+            <View style={s.empty}>
+              <Ionicons name="trending-up-outline" size={40} color={TEXT_MUTED} />
+              <Text style={s.emptyText}>레슨 기록이 쌓이면 성장 기록이 나타나요</Text>
+            </View>
+          ) : (
+            <View style={{ padding: 20, gap: 12 }}>
+              <GradeCard totalScore={totalScore} />
+              <GrowthChartCard reports={growthReports} />
+              <GrowthChangesPreview reports={growthReports} />
+              <InsightsCard reports={growthReports} />
+            </View>
+          );
+        })()}
 
         <View style={{ height: 100 }} />
       </ScrollView>
