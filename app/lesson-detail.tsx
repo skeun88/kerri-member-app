@@ -209,7 +209,13 @@ export default function LessonDetailScreen() {
           body: `${formattedDate} ${formattedTime} 레슨에 결석을 알렸어요.`,
           notif_id: 'PN-12',
           lesson_id: lesson.id,
-          data: { lesson_id: lesson.id, notification_type: 'absence_reported' },
+          data: {
+              type: 'lesson_absence',
+              lesson_id: lesson.id,
+              member_id: memberId,
+              coach_id: targetCoachId,
+              lesson_date: lesson.date,
+            },
         },
       });
     }
