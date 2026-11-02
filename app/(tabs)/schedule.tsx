@@ -5,7 +5,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { Radius, Shadow } from '../../lib/theme';
@@ -57,6 +57,11 @@ function getDDay(dateStr: string) {
 
 interface LessonRequest {
   id: string; requested_date: string; start_time: string; end_time: string; status: string; message?: string; reject_message?: string | null;
+}
+
+interface MemberReport {
+  lesson_date: string;
+  improvement_points: string[] | null;
 }
 
 function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|null; coachId: string|null; lessonDuration: number }) {
@@ -302,13 +307,14 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
 // ── 커스텀 달력 ──────────────────────────────────────────
 function CalendarView({
   year, month, selectedDate, lessonDates, unavailableDows,
-  onSelectDate, onPrevMonth, onNextMonth,
+  onSelectDate, onPrevMonth, onNextMonth, onTodayPress,
 }: {
   year: number; month: number; selectedDate: string;
   lessonDates: Set<string>;
   unavailableDows?: number[];
   onSelectDate: (d: string) => void;
   onPrevMonth: () => void; onNextMonth: () => void;
+  onTodayPress?: () => void;
 }) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -318,30 +324,22 @@ function CalendarView({
   while (cells.length % 7 !== 0) cells.push(null);
 
   const todayStr = todayKST();
-  const isCurrentMonth = (() => {
-    const now = new Date();
-    return year === now.getFullYear() && month === now.getMonth();
-  })();
 
   return (
     <View style={cal.container}>
       <View style={cal.header}>
-        <TouchableOpacity onPress={onPrevMonth} style={cal.navBtn}>
-          <Ionicons name="chevron-back" size={20} color={TEXT_PRIMARY} />
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={cal.title}>{year}년 {MONTHS[month]}</Text>
-          {!isCurrentMonth && (
-            <TouchableOpacity
-              style={cal.todayBtn}
-              onPress={() => onSelectDate(todayStr)}>
-              <Text style={cal.todayBtnText}>오늘</Text>
-            </TouchableOpacity>
-          )}
+        <Text style={cal.title}>{year}년 {MONTHS[month]}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity style={cal.todayBtn} onPress={onTodayPress ?? (() => onSelectDate(todayStr))}>
+            <Text style={cal.todayBtnText}>오늘</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onPrevMonth} style={cal.navBtn}>
+            <Ionicons name="chevron-back" size={20} color={TEXT_PRIMARY} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onNextMonth} style={cal.navBtn}>
+            <Ionicons name="chevron-forward" size={20} color={TEXT_PRIMARY} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={onNextMonth} style={cal.navBtn}>
-          <Ionicons name="chevron-forward" size={20} color={TEXT_PRIMARY} />
-        </TouchableOpacity>
       </View>
       <View style={cal.dayRow}>
         {DAYS_KR.map((d, i) => (
@@ -409,7 +407,11 @@ export default function ScheduleScreen() {
   const [loading, setLoading] = useState(true);
   const [pkgDuration, setPkgDuration] = useState(60);
   const [packageTitle, setPackageTitle] = useState('');
+  const [coachName, setCoachName] = useState('');
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, string>>({});
+  const [memberReports, setMemberReports] = useState<MemberReport[]>([]);
 
+  const router = useRouter();
   const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
   const today = todayKST();
   const [selectedDate, setSelectedDate] = useState(dateParam ?? today);
@@ -464,6 +466,18 @@ export default function ScheduleScreen() {
     const { data: pd } = await supabase.from('payments').select('*')
       .eq('member_id', mem.id).order('due_date', { ascending: false });
     setPayments(pd ?? []);
+
+    const { data: coachProfile } = await supabase.from('coach_profiles').select('display_name').eq('coach_id', mem.coach_id).maybeSingle();
+    if (coachProfile?.display_name) setCoachName(coachProfile.display_name);
+
+    const { data: attendanceData } = await supabase.from('attendance').select('lesson_id, status').eq('member_id', mem.id);
+    const aMap: Record<string, string> = {};
+    (attendanceData ?? []).forEach((a: { lesson_id: string; status: string }) => { aMap[a.lesson_id] = a.status; });
+    setAttendanceMap(aMap);
+
+    const { data: reports } = await supabase.from('member_lesson_reports').select('lesson_date, improvement_points').eq('member_id', mem.id).eq('sent_to_member', true).not('improvement_points', 'is', null).order('lesson_date', { ascending: false });
+    setMemberReports(reports ?? []);
+
     setLoading(false);
   }
 
@@ -517,10 +531,15 @@ export default function ScheduleScreen() {
 
   const lessonDateSet = new Set(lessons.map(l => l.date));
   const dayLessons = lessons.filter(l => l.date === selectedDate).sort((a, b) => a.start_time.localeCompare(b.start_time));
-  const completedCount = lessons.filter(l => l.date < today).length;
   const totalCredits = member?.total_credits ?? 0;
   const remainingCredits = member?.remaining_credits ?? 0;
-  const progress = totalCredits > 0 ? Math.min(completedCount / totalCredits, 1) : 0;
+  const usedCredits = totalCredits - remainingCredits;
+  const progress = totalCredits > 0 ? Math.min(usedCredits / totalCredits, 1) : 0;
+
+  function getPrevGoal(lessonDate: string): string[] | null {
+    const report = memberReports.find(r => r.lesson_date < lessonDate && r.improvement_points?.length);
+    return report?.improvement_points ?? null;
+  }
   const unpaid = payments.filter(p => p.status !== '납부완료');
   const totalUnpaid = unpaid.reduce((s, p) => s + (p.amount - p.paid_amount), 0);
 
@@ -588,7 +607,7 @@ export default function ScheduleScreen() {
             <Text style={s.lessonSummaryTitle}>{packageTitle || '레슨권'}</Text>
             <View style={s.lessonSummaryRow}>
               <Text style={s.lessonRemaining}>{remainingCredits}회 남았어요</Text>
-              <Text style={s.lessonCompletedText}>{completedCount} / {totalCredits}회 완료</Text>
+              <Text style={s.lessonCompletedText}>{usedCredits} / {totalCredits}회 사용</Text>
             </View>
             <View style={s.progressBar}>
               <View style={[s.progressFill, { width: `${progress * 100}%` as any }]} />
@@ -613,11 +632,24 @@ export default function ScheduleScreen() {
                 const dt = new Date(d + 'T00:00:00');
                 setCalMonth({ year: dt.getFullYear(), month: dt.getMonth() });
               }}
+              onTodayPress={() => {
+                setSelectedDate(today);
+                const now = new Date();
+                setCalMonth({ year: now.getFullYear(), month: now.getMonth() });
+              }}
               onPrevMonth={() => setCalMonth(p => {
-                const m = p.month - 1; return m < 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: m };
+                const newMonth = p.month === 0 ? 11 : p.month - 1;
+                const newYear = p.month === 0 ? p.year - 1 : p.year;
+                const prefix = `${newYear}-${String(newMonth + 1).padStart(2, '0')}`;
+                setSelectedDate(today.startsWith(prefix) ? today : `${prefix}-01`);
+                return { year: newYear, month: newMonth };
               })}
               onNextMonth={() => setCalMonth(p => {
-                const m = p.month + 1; return m > 11 ? { year: p.year + 1, month: 0 } : { year: p.year, month: m };
+                const newMonth = p.month === 11 ? 0 : p.month + 1;
+                const newYear = p.month === 11 ? p.year + 1 : p.year;
+                const prefix = `${newYear}-${String(newMonth + 1).padStart(2, '0')}`;
+                setSelectedDate(today.startsWith(prefix) ? today : `${prefix}-01`);
+                return { year: newYear, month: newMonth };
               })}
             />
 
@@ -625,12 +657,12 @@ export default function ScheduleScreen() {
             <View style={s.daySection}>
               <Text style={s.daySectionTitle}>
                 {new Date(selectedDate + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })}
-                {' '}레슨 {dayLessons.length > 0 ? `${dayLessons.length}건` : ''}
+                {dayLessons.length > 0 ? ` / 레슨 ${dayLessons.length}건` : ''}
               </Text>
               {dayLessons.length === 0 ? (
                 <View style={s.empty}>
                   <Ionicons name="calendar-outline" size={32} color={TEXT_MUTED} />
-                  <Text style={s.emptyText}>이 날엔 레슨이 없어요</Text>
+                  <Text style={s.emptyText}>이날은 예정된 레슨이 없어요</Text>
                 </View>
               ) : (
                 dayLessons.map(l => (
@@ -638,19 +670,15 @@ export default function ScheduleScreen() {
                     key={l.id}
                     lesson={l}
                     today={today}
-                    onPress={() => { setSelectedLesson(l); setReportModal(true); }}
+                    coachName={coachName}
+                    attendanceStatus={attendanceMap[l.id]}
+                    prevGoalTexts={getPrevGoal(l.date) ?? undefined}
+                    onPress={() => router.push({ pathname: '/lesson-detail', params: { id: l.id } })}
                   />
                 ))
               )}
             </View>
 
-            {/* 지난 레슨 목표 연결 */}
-            {lastPastLesson && (
-              <View style={s.goalCard}>
-                <Text style={s.goalLabel}>지난 레슨에서 이어갈 목표</Text>
-                <Text style={s.goalContent} numberOfLines={3}>{lastPastLesson.notes}</Text>
-              </View>
-            )}
           </>
         )}
 
@@ -804,34 +832,60 @@ export default function ScheduleScreen() {
   );
 }
 
-function ScheduleLessonCard({ lesson, today, onPress }: { lesson: Lesson; today: string; onPress: () => void }) {
+function ScheduleLessonCard({ lesson, today, coachName, attendanceStatus, prevGoalTexts, onPress }: {
+  lesson: Lesson; today: string; coachName?: string; attendanceStatus?: string;
+  prevGoalTexts?: string[]; onPress: () => void;
+}) {
   const isPast = lesson.date < today;
   const isToday = lesson.date === today;
-  const statusLabel = isToday ? '오늘' : isPast ? '완료' : '예정';
-  const statusColor = isToday ? TERRA : isPast ? TEXT_MUTED : '#22C55E';
+  const statusLabel = attendanceStatus === '출석' || attendanceStatus === '지각' || attendanceStatus === '조퇴'
+    ? '완료'
+    : attendanceStatus === '결석' ? '결석'
+    : isToday ? '오늘'
+    : isPast ? '완료'
+    : '예정';
+  const statusColor = statusLabel === '결석' ? '#EF4444'
+    : statusLabel === '오늘' ? TERRA
+    : statusLabel === '예정' ? '#22C55E'
+    : TEXT_MUTED;
+  const statusBg = statusLabel === '결석' ? '#FEE2E2'
+    : statusLabel === '오늘' ? LESSON_CARD_BG
+    : statusLabel === '예정' ? '#ECFDF5'
+    : '#F4F6F9';
 
   return (
     <TouchableOpacity style={s.scheduleLessonCard} onPress={onPress} activeOpacity={0.7}>
       <View style={[s.lessonLeftBorder, { backgroundColor: isPast ? DIVIDER : TERRA }]} />
       <View style={s.lessonContent}>
         <View style={s.lessonTopRow}>
-          <View style={[s.lessonStatusBadge, { backgroundColor: isToday ? LESSON_CARD_BG : isPast ? '#F4F6F9' : '#ECFDF5' }]}>
+          <View style={[s.lessonStatusBadge, { backgroundColor: statusBg }]}>
             <Text style={[s.lessonStatusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
           <Text style={s.lessonTimeText}>{lesson.start_time.slice(0,5)} ~ {lesson.end_time.slice(0,5)}</Text>
         </View>
-        <Text style={[s.lessonTitleText, isPast && { color: TEXT_MUTED }]}>{lesson.title}</Text>
+        <Text style={[s.lessonTitleText, isPast && statusLabel !== '오늘' && { color: TEXT_MUTED }]}>{lesson.title}</Text>
         {lesson.location && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
             <Ionicons name="location-outline" size={12} color={TEXT_MUTED} />
             <Text style={s.lessonMetaText}>{lesson.location}</Text>
           </View>
         )}
-        {lesson.notes && (
-          <Text style={s.lessonNotesPreview} numberOfLines={1}>📋 {lesson.notes}</Text>
+        {coachName && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <Ionicons name="person-outline" size={12} color={TEXT_MUTED} />
+            <Text style={s.lessonMetaText}>{coachName} 코치</Text>
+          </View>
         )}
+        {prevGoalTexts?.length ? (
+          <View style={s.inlineGoal}>
+            <Text style={s.inlineGoalLabel}>지난 레슨에서 이어갈 목표</Text>
+            {prevGoalTexts.slice(0, 2).map((g, i) => (
+              <Text key={i} style={s.inlineGoalText} numberOfLines={2}>• {g}</Text>
+            ))}
+          </View>
+        ) : null}
       </View>
-      <Ionicons name="chevron-forward" size={16} color={TEXT_MUTED} />
+      <Ionicons name="chevron-forward" size={16} color={TEXT_MUTED} style={{ marginRight: 14 }} />
     </TouchableOpacity>
   );
 }
@@ -916,6 +970,9 @@ const s = StyleSheet.create({
   lessonTitleText: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
   lessonMetaText: { fontSize: 12, color: TEXT_MUTED },
   lessonNotesPreview: { fontSize: 12, color: TEXT_MUTED, marginTop: 4 },
+  inlineGoal: { backgroundColor: GOAL_BG, borderRadius: 8, padding: 8, marginTop: 8 },
+  inlineGoalLabel: { fontSize: 10, fontWeight: '700', color: TERRA, marginBottom: 3 },
+  inlineGoalText: { fontSize: 12, color: TEXT_PRIMARY, lineHeight: 16 },
 
   // ── 목표 카드 ──
   goalCard: {
