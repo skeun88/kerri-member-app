@@ -104,7 +104,7 @@ useEffect(() => {
         return;
       }
 
-      const needsOnboarding = !member.birth_date;
+      const needsOnboarding = !member.onboarding_completed;
       const inOnboarding = curSeg1 === 'onboarding';
 
       if (needsOnboarding && !inOnboarding) {
