@@ -332,12 +332,18 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                           { text: '아니요', style: 'cancel' },
                           { text: '취소하기', style: 'destructive', onPress: async () => {
                             setCancellingId(req.id);
-                            const { error } = await supabase.from('lesson_requests')
+                            const { data: { user } } = await supabase.auth.getUser();
+                            const { error, count } = await supabase.from('lesson_requests')
                               .update({ status: 'cancelled' })
-                              .eq('id', req.id);
+                              .eq('id', req.id)
+                              .select();
                             setCancellingId(null);
                             if (error) {
-                              Alert.alert('오류', '신청 취소 중 문제가 발생했어요. 다시 시도해주세요.');
+                              Alert.alert('오류', `취소 실패: ${error.code} — ${error.message}`);
+                              return;
+                            }
+                            if (!count || count === 0) {
+                              Alert.alert('오류', `업데이트된 행 없음 (uid=${user?.id?.slice(0,8)}, reqId=${req.id.slice(0,8)})`);
                               return;
                             }
                             await loadMyRequests();
