@@ -293,10 +293,7 @@ export default function ProfileScreen() {
           <MenuRow
             icon="shield-outline"
             label="개인정보 처리방침"
-            onPress={() => {
-              // TODO: 실제 URL로 교체
-              Linking.openURL('https://kerri.co.kr/privacy');
-            }}
+            onPress={() => router.push('/settings/privacy')}
           />
           <MenuRow
             icon="mic-outline"
