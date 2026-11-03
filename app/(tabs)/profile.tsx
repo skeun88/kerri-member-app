@@ -9,6 +9,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
+import { KERRI_KAKAO_CHANNEL_URL, KERRI_KAKAO_CHANNEL_APP_URL } from '../../lib/config';
 import { ProfileSkeleton } from '../../components/Skeleton';
 
 const BG = '#FAFAFA';
@@ -149,6 +150,23 @@ export default function ProfileScreen() {
     } catch {
       setIsDeleting(false);
       Alert.alert('오류', '삭제 중 문제가 발생했어요. 다시 시도해주세요.');
+    }
+  }
+
+  async function openKakaoChannel() {
+    try {
+      const canOpen = await Linking.canOpenURL(KERRI_KAKAO_CHANNEL_APP_URL);
+      if (canOpen) {
+        await Linking.openURL(KERRI_KAKAO_CHANNEL_APP_URL);
+      } else {
+        await Linking.openURL(KERRI_KAKAO_CHANNEL_URL);
+      }
+    } catch {
+      Alert.alert(
+        '카카오톡 채널을 열 수 없어요',
+        '잠시 후 다시 시도해주세요.',
+        [{ text: '확인' }]
+      );
     }
   }
 
@@ -297,8 +315,8 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <MenuRow
             icon="chatbubble-ellipses-outline"
-            label="문의하기"
-            onPress={() => Linking.openURL('mailto:hyunsoo@kerri.co.kr')}
+            label="카카오톡으로 문의하기"
+            onPress={openKakaoChannel}
           />
           <MenuRow
             icon="information-circle-outline"
