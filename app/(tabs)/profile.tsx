@@ -155,18 +155,17 @@ export default function ProfileScreen() {
 
   async function openKakaoChannel() {
     try {
-      const canOpen = await Linking.canOpenURL(KERRI_KAKAO_CHANNEL_APP_URL);
-      if (canOpen) {
-        await Linking.openURL(KERRI_KAKAO_CHANNEL_APP_URL);
-      } else {
-        await Linking.openURL(KERRI_KAKAO_CHANNEL_URL);
-      }
+      await Linking.openURL(KERRI_KAKAO_CHANNEL_APP_URL);
     } catch {
-      Alert.alert(
-        '카카오톡 채널을 열 수 없어요',
-        '잠시 후 다시 시도해주세요.',
-        [{ text: '확인' }]
-      );
+      try {
+        await Linking.openURL(KERRI_KAKAO_CHANNEL_URL);
+      } catch {
+        Alert.alert(
+          '카카오톡 채널을 열 수 없어요',
+          '잠시 후 다시 시도해주세요.',
+          [{ text: '확인' }]
+        );
+      }
     }
   }
 
