@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
-import { notifyCoachBoganRequest } from '../../lib/notifications';
+import { notifyCoachBoganRequest, notifyCoachBoganCancel } from '../../lib/notifications';
 import { Radius, Shadow } from '../../lib/theme';
 import { ScheduleSkeleton } from '../../components/Skeleton';
 import {
@@ -344,6 +344,13 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
                             if (!updated?.length) {
                               Alert.alert('오류', '신청 취소에 실패했어요. 이미 처리된 신청일 수 있어요.');
                               return;
+                            }
+                            const member = await getMyMemberRow();
+                            if (member && coachId) {
+                              notifyCoachBoganCancel(
+                                coachId, member.name, req.id,
+                                req.requested_date, req.start_time,
+                              ).catch(() => {});
                             }
                             await loadMyRequests();
                           }},

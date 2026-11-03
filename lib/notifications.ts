@@ -92,6 +92,41 @@ export async function notifyCoachBoganRequest(
   }).catch(() => {});
 }
 
+// PN-17: 회원 → 코치 보강 신청 취소 알림
+export async function notifyCoachBoganCancel(
+  coachId: string,
+  memberName: string,
+  requestId: string,
+  date: string,
+  startTime: string,
+) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  const dateObj = new Date(`${date}T00:00:00+09:00`);
+  const dateFormatted = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+
+  await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      recipient_type: 'coach',
+      recipient_id: coachId,
+      title: '보강 신청 취소',
+      body: `${memberName}님이 ${dateFormatted} ${startTime.slice(0, 5)} 보강 신청을 취소했어요.`,
+      data: {
+        screen: 'schedule',
+        type: 'bogan_cancel',
+        request_id: requestId,
+      },
+      notif_id: 'PN-17',
+    }),
+  }).catch(() => {});
+}
+
 // PN-03: 회원 → 코치 메시지 알림
 export async function notifyCoachMessage(coachId: string, memberName: string) {
   const { data: { session } } = await supabase.auth.getSession();
