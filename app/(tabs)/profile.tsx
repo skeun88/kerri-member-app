@@ -1,23 +1,25 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Alert, Modal, TextInput, ActivityIndicator,
-  SafeAreaView,
+  RefreshControl, Alert, ActivityIndicator,
+  SafeAreaView, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
 import { ProfileSkeleton } from '../../components/Skeleton';
 
-// ── Design tokens (홈·내 일정·레슨 기록과 동일 팔레트) ──────────────
-const BG = '#F7F7F5';
+const BG = '#FAFAFA';
 const CARD = '#FFFFFF';
 const TERRA = '#C0755A';
 const PEACH = '#F8EEE9';
 const FG = '#20242C';
 const MUTED = '#667085';
 const DIVIDER = '#E8EBEF';
+const RED = '#E53E3E';
+const SECTION_LABEL_COLOR = '#9AA0AC';
 
 interface MemberProfile {
   id: string; name: string; level: string; phone: string;
@@ -29,6 +31,43 @@ function isSystemEmail(email: string): boolean {
   return email.startsWith('invite_') || email.endsWith('@kerri.app');
 }
 
+function SectionLabel({ title }: { title: string }) {
+  return <Text style={styles.sectionLabel}>{title}</Text>;
+}
+
+type MenuRowProps = {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+  muted?: boolean;
+  value?: string;
+  disabled?: boolean;
+  isLast?: boolean;
+};
+
+function MenuRow({ icon, label, onPress, danger, muted, value, disabled, isLast }: MenuRowProps) {
+  const color = danger ? RED : muted ? MUTED : FG;
+  return (
+    <>
+      <TouchableOpacity
+        style={styles.menuRow}
+        onPress={onPress}
+        activeOpacity={0.7}
+        disabled={disabled}
+      >
+        <Ionicons name={icon} size={18} color={color} style={styles.menuIcon} />
+        <Text style={[styles.menuLabel, { color }]}>{label}</Text>
+        {value != null
+          ? <Text style={styles.menuValue}>{value}</Text>
+          : <Ionicons name="chevron-forward" size={16} color={muted ? '#C5CAD3' : MUTED} />
+        }
+      </TouchableOpacity>
+      {!isLast && <View style={styles.menuDivider} />}
+    </>
+  );
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<MemberProfile | null>(null);
@@ -38,10 +77,6 @@ export default function ProfileScreen() {
   const [totalLessons, setTotalLessons] = useState(0);
   const [pastLessons, setPastLessons] = useState(0);
   const [attendedLessons, setAttendedLessons] = useState(0);
-
-  const [editModal, setEditModal] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [saving, setSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function loadProfile() {
@@ -62,9 +97,7 @@ export default function ProfileScreen() {
     }
     if (!mem) { setLoading(false); return; }
     setProfile(mem);
-    setEditName(mem.name);
 
-    // lesson_count = AI 분석이 완료된 출석 횟수
     const attended = mem.lesson_count ?? 0;
     setAttendedLessons(attended);
 
@@ -73,8 +106,6 @@ export default function ProfileScreen() {
     const lessonIds = (lm ?? []).map((l: any) => l.lesson_id);
     setTotalLessons(lessonIds.length);
 
-    // 출석률 분모: 오늘 이전(또는 오늘)의 과거 레슨만 포함
-    // 미래 예정 레슨은 분모에서 제외해야 104% 등 100% 초과를 방지함
     if (lessonIds.length > 0) {
       const today = new Date().toISOString().split('T')[0];
       const { data: past } = await supabase.from('lessons')
@@ -94,31 +125,10 @@ export default function ProfileScreen() {
     loadProfile();
   }, []));
 
-  async function handleSaveName() {
-    if (!profile) return;
-    const trimmed = editName.trim();
-    if (!trimmed) { Alert.alert('입력 오류', '이름을 입력해주세요.'); return; }
-    setSaving(true);
-    try {
-      const { data: updated, error } = await supabase
-        .from('members').update({ name: trimmed }).eq('id', profile.id).select('id');
-      if (error) throw error;
-      if (!updated || updated.length === 0)
-        throw new Error('이름 변경 권한이 없습니다. 앱을 재시작 후 다시 시도해주세요.');
-      setProfile(prev => prev ? { ...prev, name: trimmed } : prev);
-      setEditName(trimmed);
-      setEditModal(false);
-    } catch (e: any) {
-      Alert.alert('저장 실패', e.message || '이름 변경에 실패했습니다.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function handleSignOut() {
     Alert.alert('로그아웃', '로그아웃 하시겠습니까?', [
       { text: '취소', style: 'cancel' },
-      { text: '로그아웃', style: 'destructive', onPress: () => supabase.auth.signOut() },
+      { text: '로그아웃', onPress: () => supabase.auth.signOut() },
     ]);
   }
 
@@ -136,7 +146,7 @@ export default function ProfileScreen() {
         throw new Error(body?.error || '삭제 실패');
       }
       await supabase.auth.signOut();
-    } catch (e: any) {
+    } catch {
       setIsDeleting(false);
       Alert.alert('오류', '삭제 중 문제가 발생했어요. 다시 시도해주세요.');
     }
@@ -169,10 +179,10 @@ export default function ProfileScreen() {
   const level = profile?.level ?? '';
   const initial = ((profile?.name ?? email).slice(0, 1).toUpperCase()) || '?';
   const displayEmail = email && !isSystemEmail(email) ? email : null;
-  // 출석률: 과거 레슨 기준, 집계 대상 없으면 '—', 최대 100% 캡
   const attendRate = pastLessons > 0
     ? `${Math.min(100, Math.round((attendedLessons / pastLessons) * 100))}%`
     : '—';
+  const appVersion = Constants.expoConfig?.version ?? '—';
 
   if (loading) return <ProfileSkeleton />;
 
@@ -188,30 +198,29 @@ export default function ProfileScreen() {
           />
         }
       >
-        {/* ── Header ───────────────────────────────────────────── */}
+        {/* ── Header ─────────────────────────────────────────── */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>마이</Text>
         </View>
 
-        {/* ── Profile Card ──────────────────────────────────────── */}
+        {/* ── 1. 프로필 섹션 ─────────────────────────────────── */}
         <View style={styles.card}>
-          <View style={styles.profileRow}>
-            <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.avatarWrap}>
+          <TouchableOpacity
+            style={styles.profileRow}
+            onPress={() => router.push('/profile/edit')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.avatarWrap}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initial}</Text>
               </View>
               <View style={styles.avatarEditBadge}>
                 <Ionicons name="pencil" size={10} color="#fff" />
               </View>
-            </TouchableOpacity>
+            </View>
 
             <View style={styles.profileInfo}>
-              <View style={styles.nameRow}>
-                <Text style={styles.profileName}>{profile?.name ?? '회원'}</Text>
-                <TouchableOpacity onPress={() => router.push('/profile/edit')} style={styles.editBtn}>
-                  <Text style={styles.editBtnText}>수정</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.profileName}>{profile?.name ?? '회원'}</Text>
               {!!displayEmail && (
                 <Text style={styles.profileEmail} numberOfLines={1}>{displayEmail}</Text>
               )}
@@ -221,12 +230,16 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-          </View>
+
+            <View style={styles.profileEditBtn}>
+              <Text style={styles.profileEditBtnText}>수정</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
-        {/* ── Lesson Stats Card (2×2 grid) ─────────────────────── */}
+        {/* ── 2. 나의 레슨 현황 ──────────────────────────────── */}
+        <SectionLabel title="나의 레슨 현황" />
         <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>나의 레슨 현황</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statCell, styles.cellRight, styles.cellBottom]}>
               <Text style={styles.statNum}>{totalLessons}</Text>
@@ -247,57 +260,80 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Account Menu Card ─────────────────────────────────── */}
+        {/* ── 3. 설정 ────────────────────────────────────────── */}
+        <SectionLabel title="설정" />
         <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>계정 관리</Text>
-          <TouchableOpacity style={styles.menuRow} onPress={handleSignOut} activeOpacity={0.7}>
-            <Ionicons name="log-out-outline" size={18} color="#E53E3E" />
-            <Text style={[styles.menuLabel, { color: '#E53E3E' }]}>로그아웃</Text>
-            <Ionicons name="chevron-forward" size={16} color="#E53E3E" />
-          </TouchableOpacity>
-          <View style={styles.menuDivider} />
-          <TouchableOpacity
-            style={styles.menuRow}
-            onPress={handleDeleteAccount}
-            activeOpacity={0.7}
-            disabled={isDeleting}
-          >
-            <Ionicons name="trash-outline" size={18} color="#9E9E9E" />
-            <Text style={[styles.menuLabel, { color: '#9E9E9E' }]}>
-              {isDeleting ? '삭제 중...' : '계정 삭제'}
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color="#9E9E9E" />
-          </TouchableOpacity>
+          <MenuRow
+            icon="notifications-outline"
+            label="알림 설정"
+            onPress={() => router.push('/notifications')}
+          />
+          <MenuRow
+            icon="document-text-outline"
+            label="서비스 이용약관"
+            onPress={() => {
+              // TODO: 실제 URL로 교체
+              Linking.openURL('https://kerri.co.kr/terms');
+            }}
+          />
+          <MenuRow
+            icon="shield-outline"
+            label="개인정보 처리방침"
+            onPress={() => {
+              // TODO: 실제 URL로 교체
+              Linking.openURL('https://kerri.co.kr/privacy');
+            }}
+          />
+          <MenuRow
+            icon="mic-outline"
+            label="AI 음성 분석 동의 관리"
+            onPress={() => router.push('/consent/ai-consent')}
+            isLast
+          />
         </View>
+
+        {/* ── 4. 고객지원 ────────────────────────────────────── */}
+        <SectionLabel title="고객지원" />
+        <View style={styles.card}>
+          <MenuRow
+            icon="chatbubble-ellipses-outline"
+            label="문의하기"
+            onPress={() => Linking.openURL('mailto:hyunsoo@kerri.co.kr')}
+          />
+          <MenuRow
+            icon="information-circle-outline"
+            label="앱 버전"
+            onPress={() => {}}
+            value={appVersion}
+            isLast
+          />
+        </View>
+
+        {/* ── 5. 계정 관리 ───────────────────────────────────── */}
+        <SectionLabel title="계정 관리" />
+        <View style={styles.card}>
+          <MenuRow
+            icon="log-out-outline"
+            label="로그아웃"
+            onPress={handleSignOut}
+            isLast
+          />
+        </View>
+
+        <TouchableOpacity
+          style={styles.deleteAccountRow}
+          onPress={handleDeleteAccount}
+          disabled={isDeleting}
+          activeOpacity={0.7}
+        >
+          {isDeleting
+            ? <ActivityIndicator size="small" color={RED} />
+            : <Text style={styles.deleteAccountText}>회원 탈퇴 및 개인정보 삭제</Text>
+          }
+        </TouchableOpacity>
 
         <View style={{ height: 80 }} />
       </ScrollView>
-
-      {/* ── Edit Name Modal ───────────────────────────────────── */}
-      <Modal visible={editModal} transparent animationType="slide" onRequestClose={() => setEditModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>이름 변경</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="이름"
-              placeholderTextColor={MUTED}
-              autoFocus
-            />
-            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveName} disabled={saving}>
-              {saving
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.modalSaveBtnText}>저장</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditModal(false)}>
-              <Text style={styles.modalCancelText}>취소</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -306,59 +342,61 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: BG },
 
   header: {
-    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4,
   },
   headerTitle: {
     fontSize: 22, fontWeight: '900', color: FG,
   },
 
-  card: {
-    backgroundColor: CARD, borderRadius: 20,
-    marginHorizontal: 16, marginBottom: 12, padding: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  sectionLabel: {
+    fontSize: 12, fontWeight: '700', color: SECTION_LABEL_COLOR,
+    marginHorizontal: 20, marginTop: 16, marginBottom: 8,
+    letterSpacing: 0.4, textTransform: 'uppercase',
   },
-  cardSectionTitle: {
-    fontSize: 13, fontWeight: '700', color: MUTED,
-    marginBottom: 14, letterSpacing: 0.2,
+
+  card: {
+    backgroundColor: CARD, borderRadius: 18,
+    marginHorizontal: 16, marginBottom: 4,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+    overflow: 'hidden',
   },
 
   // Profile
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  profileRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 18, gap: 14,
+  },
   avatarWrap: { position: 'relative' },
   avatar: {
-    width: 64, height: 64, borderRadius: 32,
+    width: 60, height: 60, borderRadius: 30,
     backgroundColor: PEACH, justifyContent: 'center', alignItems: 'center',
   },
-  avatarText: { fontSize: 26, fontWeight: '900', color: TERRA },
+  avatarText: { fontSize: 24, fontWeight: '900', color: TERRA },
   avatarEditBadge: {
     position: 'absolute', bottom: 0, right: 0,
-    width: 22, height: 22, borderRadius: 11,
+    width: 20, height: 20, borderRadius: 10,
     backgroundColor: TERRA, justifyContent: 'center', alignItems: 'center',
     borderWidth: 2, borderColor: CARD,
   },
-  profileInfo: { flex: 1, gap: 5 },
-  nameRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  profileName: { fontSize: 18, fontWeight: '800', color: FG },
-  editBtn: {
-    backgroundColor: PEACH, borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  editBtnText: { fontSize: 12, fontWeight: '700', color: TERRA },
+  profileInfo: { flex: 1, gap: 4 },
+  profileName: { fontSize: 17, fontWeight: '800', color: FG },
   profileEmail: { fontSize: 13, color: MUTED },
   levelBadge: {
     backgroundColor: PEACH, borderRadius: 20,
     alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3,
   },
   levelText: { fontSize: 12, fontWeight: '700', color: TERRA },
+  profileEditBtn: {
+    backgroundColor: PEACH, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  profileEditBtnText: { fontSize: 12, fontWeight: '700', color: TERRA },
 
   // Stats grid
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   statCell: {
-    width: '50%', paddingVertical: 14, paddingHorizontal: 8,
+    width: '50%', paddingVertical: 16, paddingHorizontal: 8,
     alignItems: 'center',
   },
   cellRight: { borderRightWidth: 1, borderRightColor: DIVIDER },
@@ -366,37 +404,22 @@ const styles = StyleSheet.create({
   statNum: { fontSize: 22, fontWeight: '900', color: FG, marginBottom: 4 },
   statLabel: { fontSize: 12, fontWeight: '500', color: MUTED },
 
-  // Menu
+  // Menu rows
   menuRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 12, gap: 12,
+    paddingVertical: 15, paddingHorizontal: 16,
   },
-  menuLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
-  menuDivider: { height: 1, backgroundColor: DIVIDER, marginVertical: 4 },
+  menuIcon: { marginRight: 12 },
+  menuLabel: { flex: 1, fontSize: 15, fontWeight: '500', color: FG },
+  menuValue: { fontSize: 14, color: MUTED },
+  menuDivider: { height: StyleSheet.hairlineWidth, backgroundColor: DIVIDER, marginLeft: 46 },
 
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: CARD,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, paddingBottom: 48,
+  // Delete account
+  deleteAccountRow: {
+    alignItems: 'center', paddingVertical: 16, marginTop: 8,
   },
-  modalHandle: {
-    width: 40, height: 4, backgroundColor: DIVIDER,
-    borderRadius: 2, alignSelf: 'center', marginBottom: 20,
+  deleteAccountText: {
+    fontSize: 13, color: RED, fontWeight: '500',
+    textDecorationLine: 'underline',
   },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: FG, marginBottom: 16 },
-  modalInput: {
-    backgroundColor: BG, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 16, color: FG,
-    borderWidth: 1, borderColor: DIVIDER, marginBottom: 12,
-  },
-  modalSaveBtn: {
-    backgroundColor: TERRA, borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center', marginBottom: 8,
-  },
-  modalSaveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  modalCancelBtn: { alignItems: 'center', paddingVertical: 10 },
-  modalCancelText: { fontSize: 15, color: MUTED },
 });
