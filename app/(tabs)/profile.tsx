@@ -288,10 +288,7 @@ export default function ProfileScreen() {
           <MenuRow
             icon="document-text-outline"
             label="서비스 이용약관"
-            onPress={() => {
-              // TODO: 실제 URL로 교체
-              Linking.openURL('https://kerri.co.kr/terms');
-            }}
+            onPress={() => router.push('/settings/terms')}
           />
           <MenuRow
             icon="shield-outline"
