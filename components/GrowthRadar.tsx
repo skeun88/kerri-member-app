@@ -43,9 +43,18 @@ export interface SkillScoreResult {
 }
 
 // ── Helpers ────────────────────────────────────────────────────
-function detectSkill(point: string): SkillName | null {
+const SKILL_EN_TO_KO: Record<string, SkillName> = {
+  forehand: '포핸드', backhand: '백핸드',
+  serve: '서브', volley: '발리',
+  footwork: '풋워크', rally: '랠리',
+};
+
+function detectSkill(c: { point: string; skill?: string | null }): SkillName | null {
+  // Use AI-assigned skill field first (new records)
+  if (c.skill && SKILL_EN_TO_KO[c.skill]) return SKILL_EN_TO_KO[c.skill];
+  // Fall back to keyword matching in point text (existing records)
   for (const s of SKILLS) {
-    if (point.includes(s)) return s;
+    if (c.point.includes(s)) return s;
   }
   return null;
 }
@@ -56,7 +65,7 @@ function accumulate(reports: GrowthReport[]): Partial<Record<SkillName, number>>
     if (!r.lesson_comparison) continue;
     const seenThisLesson = new Set<SkillName>();
     for (const c of r.lesson_comparison) {
-      const skill = detectSkill(c.point);
+      const skill = detectSkill(c as any);
       if (!skill || seenThisLesson.has(skill)) continue;
       seenThisLesson.add(skill);
       const isFirst = scores[skill] === undefined;
@@ -80,7 +89,7 @@ export function computeSkillScores(reports: GrowthReport[]): SkillScoreResult[] 
   const latestInfo: Partial<Record<SkillName, { status: string; reason?: string; planId: string }>> = {};
   if (latest?.lesson_comparison) {
     for (const c of latest.lesson_comparison) {
-      const skill = detectSkill(c.point);
+      const skill = detectSkill(c as any);
       if (skill && !latestInfo[skill]) {
         latestInfo[skill] = { status: c.status, reason: c.reason, planId: latest.plan_id };
       }
