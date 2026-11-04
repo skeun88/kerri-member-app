@@ -12,9 +12,11 @@ import { notifyCoachBoganRequest, notifyCoachBoganCancel } from '../../lib/notif
 import { Radius, Shadow } from '../../lib/theme';
 import { ScheduleSkeleton } from '../../components/Skeleton';
 import {
-  GrowthReport, GradeCard, GrowthChartCard, InsightsCard, GrowthChangesPreview,
-  deriveChangeStatus, calculateScore,
+  GrowthReport, toLines,
 } from '../../components/GrowthDashboard';
+import {
+  computeSkillScores, GrowthBalanceCard, RecentSkillChanges,
+} from '../../components/GrowthRadar';
 
 // ── Design tokens (홈 화면과 동일 팔레트) ──────────────────────
 const BG = '#F7F7F5';
@@ -1031,21 +1033,19 @@ export default function ScheduleScreen() {
 
         {/* ── 성장 기록 탭 ── */}
         {tab === 'report' && (() => {
-          const totalScore = growthReports.reduce((sum, r) => {
-            const status = deriveChangeStatus(r.lesson_comparison);
-            return sum + calculateScore(status, true);
-          }, 0);
-          return growthReports.length === 0 ? (
-            <View style={s.empty}>
-              <Ionicons name="trending-up-outline" size={40} color={TEXT_MUTED} />
-              <Text style={s.emptyText}>레슨 기록이 쌓이면 성장 기록이 나타나요</Text>
-            </View>
-          ) : (
+          const skillScores = computeSkillScores(growthReports);
+          const latestPlanId = growthReports[0]?.plan_id ?? null;
+          const latestNextGoals = toLines(growthReports[0]?.next_goals_raw ?? null);
+          return (
             <View style={{ padding: 20, gap: 12 }}>
-              <GradeCard totalScore={totalScore} />
-              <GrowthChartCard reports={growthReports} />
-              <GrowthChangesPreview reports={growthReports} />
-              <InsightsCard reports={growthReports} />
+              <GrowthBalanceCard
+                skillScores={skillScores}
+                latestPlanId={latestPlanId}
+              />
+              <RecentSkillChanges
+                skillScores={skillScores}
+                latestNextGoals={latestNextGoals}
+              />
             </View>
           );
         })()}
