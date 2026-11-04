@@ -551,10 +551,8 @@ export default function HomeScreen() {
   }
 
   function openCoachProfile() {
-    if (coachProfile?.is_public && coachProfile.public_slug) {
-      Linking.openURL(`https://kerri.co.kr/coach/${coachProfile.public_slug}`);
-    } else {
-      Alert.alert('프로필 미공개', '코치님이 아직 프로필을 공개하지 않았어요.');
+    if (member?.coach_id) {
+      router.push(`/coach-profile?coachId=${member.coach_id}`);
     }
   }
 
