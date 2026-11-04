@@ -32,6 +32,7 @@ export interface LessonComparison {
 export interface GrowthReport {
   plan_id: string;
   created_at: string;
+  lesson_id?: string | null;
   lesson_comparison: LessonComparison[] | null;
   next_goals_raw: string[] | string | null;
   achievements?: string[] | null;

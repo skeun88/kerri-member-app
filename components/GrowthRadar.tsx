@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +41,7 @@ export interface SkillScoreResult {
   status: string | null;
   reason: string | null;
   planId: string | null;
+  lessonId: string | null;
 }
 
 export interface SkillChangeEvent {
@@ -50,6 +51,7 @@ export interface SkillChangeEvent {
   delta: number;
   reason: string | null;
   planId: string;
+  lessonId: string | null;
 }
 
 // ── Score helpers ──────────────────────────────────────────────
@@ -103,12 +105,12 @@ export function computeSkillScores(reports: GrowthReport[]): SkillScoreResult[] 
   const prev = oldest.length > 1 ? accumulate(oldest.slice(0, -1)) : {};
 
   const latest = reports[0];
-  const latestInfo: Partial<Record<SkillName, { status: string; reason?: string; planId: string }>> = {};
+  const latestInfo: Partial<Record<SkillName, { status: string; reason?: string; planId: string; lessonId: string | null }>> = {};
   if (latest?.lesson_comparison) {
     for (const c of latest.lesson_comparison) {
       const skill = detectSkill(c as any);
       if (skill && !latestInfo[skill]) {
-        latestInfo[skill] = { status: c.status, reason: c.reason, planId: latest.plan_id };
+        latestInfo[skill] = { status: c.status, reason: c.reason, planId: latest.plan_id, lessonId: latest.lesson_id ?? null };
       }
     }
   }
@@ -128,6 +130,7 @@ export function computeSkillScores(reports: GrowthReport[]): SkillScoreResult[] 
       status: info?.status ?? null,
       reason: info?.reason ?? null,
       planId: info?.planId ?? null,
+      lessonId: info?.lessonId ?? null,
     };
   });
 }
@@ -148,7 +151,7 @@ export function computeChangeEvents(reports: GrowthReport[]): SkillChangeEvent[]
       const delta = getDelta(before, c.status);
       running[skill] = Math.max(0, Math.min(100, before + delta));
       if (c.status) {
-        events.push({ date: r.created_at, skill, status: c.status, delta, reason: c.reason ?? null, planId: r.plan_id });
+        events.push({ date: r.created_at, skill, status: c.status, delta, reason: c.reason ?? null, planId: r.plan_id, lessonId: r.lesson_id ?? null });
       }
     }
   }
@@ -186,10 +189,12 @@ function HexRadarChart({
   skillScores,
   animPhase,
   hasPrevious,
+  onSkillPress,
 }: {
   skillScores: SkillScoreResult[];
   animPhase: number;
   hasPrevious: boolean;
+  onSkillPress?: (index: number) => void;
 }) {
   // All 6 always have a display value (unrated = BASE_SCORE)
   const displayCurrent = skillScores.map(s => {
@@ -248,7 +253,8 @@ function HexRadarChart({
         const delta = skillScores[i].delta;
 
         return (
-          <G key={i}>
+          <G key={i} onPress={() => onSkillPress?.(i)}>
+            <Circle cx={lx} cy={baseY - 2} r={22} fill="transparent" />
             <SvgText x={lx} y={baseY} textAnchor={align} fontSize={11} fontWeight="600"
               fill={isRated ? TEXT_PRIMARY : TEXT_MUTED}>
               {name}
@@ -335,6 +341,81 @@ function formatDate(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+// ── Skill Detail Sheet ─────────────────────────────────────────
+function SkillDetailSheet({
+  skillScore,
+  onClose,
+  onViewLesson,
+}: {
+  skillScore: SkillScoreResult | null;
+  onClose: () => void;
+  onViewLesson: (lessonId: string | null, planId: string | null) => void;
+}) {
+  if (!skillScore) return null;
+  const st = getStatusStyle(skillScore.status);
+  const dStr = formatDelta(skillScore.delta);
+  const displayScore = skillScore.current ?? BASE_SCORE;
+  const toNext = skillScore.rated && skillScore.current !== null ? nextTenPoints(skillScore.current) : null;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={sheet.backdrop} onPress={onClose}>
+        <Pressable style={sheet.container} onPress={() => {}}>
+          <View style={sheet.handle} />
+          <View style={sheet.headerRow}>
+            <Text style={sheet.skillName}>{skillScore.skill}</Text>
+            {skillScore.rated && skillScore.status && (
+              <View style={[sheet.statusBadge, { backgroundColor: st.bg }]}>
+                <Text style={[sheet.statusBadgeText, { color: st.text }]}>{st.label}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={sheet.scoreRow}>
+            <Text style={sheet.scoreLabel}>현재 포인트</Text>
+            <Text style={sheet.scoreValue}>{displayScore}점</Text>
+          </View>
+
+          {dStr ? (
+            <View style={sheet.deltaRow}>
+              <Text style={sheet.deltaLabel}>최근 변화</Text>
+              <Text style={[sheet.deltaValue, { color: skillScore.delta > 0 ? '#059669' : skillScore.delta < 0 ? TERRA : TEXT_MUTED }]}>
+                {dStr}점
+              </Text>
+            </View>
+          ) : null}
+
+          {toNext !== null && (
+            <Text style={sheet.nextHint}>다음 10포인트 단위까지 {toNext}점 남아 있어요</Text>
+          )}
+
+          {skillScore.reason ? (
+            <View style={sheet.reasonBox}>
+              <Text style={sheet.reasonLabel}>근거</Text>
+              <Text style={sheet.reasonText}>{skillScore.reason}</Text>
+            </View>
+          ) : null}
+
+          {!skillScore.rated && (
+            <View style={sheet.unratedBox}>
+              <Text style={sheet.unratedText}>아직 이 기술이 포함된 레슨 기록이 없어요.{'\n'}기본 20포인트에서 시작해요.</Text>
+            </View>
+          )}
+
+          {skillScore.rated && (
+            <TouchableOpacity
+              style={sheet.lessonBtn}
+              onPress={() => { onClose(); onViewLesson(skillScore.lessonId, skillScore.planId); }}
+            >
+              <Text style={sheet.lessonBtnText}>레슨 기록에서 확인하기</Text>
+            </TouchableOpacity>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ── Growth Balance Card ────────────────────────────────────────
 export function GrowthBalanceCard({
   skillScores,
@@ -343,8 +424,10 @@ export function GrowthBalanceCard({
   skillScores: SkillScoreResult[];
   latestPlanId: string | null;
 }) {
+  const router = useRouter();
   const [animPhase, setAnimPhase] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
+  const [selectedSkillIdx, setSelectedSkillIdx] = useState<number | null>(null);
   const animRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -405,9 +488,26 @@ export function GrowthBalanceCard({
         </TouchableOpacity>
       </View>
 
+      <SkillDetailSheet
+        skillScore={selectedSkillIdx !== null ? skillScores[selectedSkillIdx] : null}
+        onClose={() => setSelectedSkillIdx(null)}
+        onViewLesson={(lessonId, planId) => {
+          if (lessonId) {
+            router.push({ pathname: '/lesson-detail', params: { id: lessonId } } as never);
+          } else {
+            router.push({ pathname: '/(tabs)/report' } as never);
+          }
+        }}
+      />
+
       <ScoreInfoTooltip visible={showInfo} onClose={() => setShowInfo(false)} />
 
-      <HexRadarChart skillScores={skillScores} animPhase={animPhase} hasPrevious={hasPrevious} />
+      <HexRadarChart
+        skillScores={skillScores}
+        animPhase={animPhase}
+        hasPrevious={hasPrevious}
+        onSkillPress={(i) => setSelectedSkillIdx(i)}
+      />
 
       {/* Legend */}
       {hasPrevious && (
@@ -431,12 +531,18 @@ export function GrowthBalanceCard({
         </View>
       ) : (
         <View style={styles.scoreList}>
-          {ratedSkills.map(s => {
+          {ratedSkills.map((s, idx) => {
             const st = getStatusStyle(s.status);
             const dStr = formatDelta(s.delta);
             const toNext = s.delta > 0 && s.current !== null ? nextTenPoints(s.current) : null;
+            const skillIdx = SKILLS.indexOf(s.skill);
             return (
-              <View key={s.skill} style={styles.scoreListRow}>
+              <TouchableOpacity
+                key={s.skill}
+                style={styles.scoreListRow}
+                onPress={() => setSelectedSkillIdx(skillIdx >= 0 ? skillIdx : null)}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.scoreListSkill}>{s.skill}</Text>
                 <View style={styles.scoreListRight}>
                   {dStr ? (
@@ -451,7 +557,7 @@ export function GrowthBalanceCard({
                     )}
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
           {ratedCount < 6 && (
@@ -490,11 +596,9 @@ export function RecentChangesCard({
     <View style={styles.card}>
       <View style={styles.changeCardHeader}>
         <Text style={styles.cardTitle}>이전 대비 변화</Text>
-        {changeEvents.length > 3 && (
-          <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/report' } as never)}>
-            <Text style={styles.seeAllText}>전체 변화 기록 보기</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={() => router.push('/growth-changes' as never)}>
+          <Text style={styles.seeAllText}>전체 변화 기록 보기</Text>
+        </TouchableOpacity>
       </View>
 
       {shown.map((ev, i) => {
@@ -505,7 +609,13 @@ export function RecentChangesCard({
           <TouchableOpacity
             key={i}
             style={[styles.changeRow, i < shown.length - 1 && styles.changeRowBorder]}
-            onPress={() => router.push({ pathname: '/(tabs)/report' } as never)}
+            onPress={() => {
+              if (ev.lessonId) {
+                router.push({ pathname: '/lesson-detail', params: { id: ev.lessonId } } as never);
+              } else {
+                router.push({ pathname: '/(tabs)/report' } as never);
+              }
+            }}
             activeOpacity={0.75}
           >
             <View style={styles.changeMain}>
@@ -775,4 +885,58 @@ const tip = StyleSheet.create({
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
     borderBottomColor: TEXT_PRIMARY,
   },
+});
+
+const sheet = StyleSheet.create({
+  backdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  container: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 44,
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 }, elevation: 10,
+  },
+  handle: {
+    width: 40, height: 5, backgroundColor: '#E0E0E0',
+    borderRadius: 3, alignSelf: 'center', marginBottom: 20,
+  },
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 20,
+  },
+  skillName: { fontSize: 20, fontWeight: '800', color: TEXT_PRIMARY },
+  statusBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  statusBadgeText: { fontSize: 12, fontWeight: '700' },
+  scoreRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: BG, borderRadius: 14, padding: 16, marginBottom: 10,
+  },
+  scoreLabel: { fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
+  scoreValue: { fontSize: 24, fontWeight: '800', color: TERRA },
+  deltaRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4, marginBottom: 8,
+  },
+  deltaLabel: { fontSize: 14, color: TEXT_MUTED },
+  deltaValue: { fontSize: 15, fontWeight: '700' },
+  nextHint: { fontSize: 12, color: TEXT_MUTED, marginBottom: 14, paddingHorizontal: 4 },
+  reasonBox: {
+    backgroundColor: BG, borderRadius: 12, padding: 14, marginVertical: 10,
+  },
+  reasonLabel: { fontSize: 11, fontWeight: '700', color: TEXT_MUTED, marginBottom: 6 },
+  reasonText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 21 },
+  unratedBox: {
+    backgroundColor: BG, borderRadius: 12, padding: 14, marginVertical: 10,
+  },
+  unratedText: { fontSize: 14, color: TEXT_MUTED, lineHeight: 21, textAlign: 'center' },
+  lessonBtn: {
+    backgroundColor: TERRA, borderRadius: 16, padding: 18,
+    alignItems: 'center', marginTop: 16,
+  },
+  lessonBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

@@ -673,7 +673,7 @@ export default function ScheduleScreen() {
 
     const { data: planData } = await supabase
       .from('member_lesson_plan_view')
-      .select('id, created_at, lesson_comparison, next_goals, achievements, improvement_points')
+      .select('id, created_at, lesson_id, lesson_comparison, next_goals, achievements, improvement_points')
       .eq('member_id', mem.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -689,9 +689,10 @@ export default function ScheduleScreen() {
       setGrowthReports(
         planData
           .filter((p: any) => sentIds.has(p.id))
-          .map((p: { id: string; created_at: string; lesson_comparison: unknown; next_goals: unknown; achievements: unknown; improvement_points: unknown }) => ({
+          .map((p: { id: string; created_at: string; lesson_id?: string | null; lesson_comparison: unknown; next_goals: unknown; achievements: unknown; improvement_points: unknown }) => ({
             plan_id: p.id,
             created_at: p.created_at,
+            lesson_id: (p.lesson_id as string | null) ?? null,
             lesson_comparison: Array.isArray(p.lesson_comparison) ? p.lesson_comparison : null,
             next_goals_raw: (p.next_goals as string[] | string | null) ?? null,
             achievements: Array.isArray(p.achievements) ? p.achievements as string[] : null,
