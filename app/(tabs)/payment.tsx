@@ -6,6 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
+import { PaymentSkeleton } from '../../components/Skeleton';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 // 토스페이먼츠 테스트 클라이언트 키 (운영 시 플랫폼 키로 교체)
@@ -158,7 +159,7 @@ export default function PaymentScreen() {
   }
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color={Colors.primary} /></View>;
+    return <PaymentSkeleton />;
   }
 
   const totalPending = pending.reduce((s, p) => s + (p.amount - p.paid_amount), 0);

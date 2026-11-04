@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
+import { HomeSkeleton } from '../../components/Skeleton';
 
 // ── Design tokens ──────────────────────────────────────────────
 const BG = '#F7F7F5';
@@ -219,6 +220,7 @@ export default function HomeScreen() {
   const [briefingExpanded, setBriefingExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const initialLoaded = useRef(false);
 
   // Calendar state
   const [weekOffset, setWeekOffset] = useState(0);
@@ -256,7 +258,7 @@ export default function HomeScreen() {
   // ── Data loading ────────────────────────────────────────────
   async function loadData() {
     const myMember = await getMyMemberRow();
-    if (!myMember) { setLoading(false); return; }
+    if (!myMember) { initialLoaded.current = true; setLoading(false); return; }
     setMember(myMember as MemberInfo);
 
     const today = new Date().toISOString().split('T')[0];
@@ -361,6 +363,7 @@ export default function HomeScreen() {
       .eq('is_read', false);
     setUnreadNotifCount(notifUnread ?? 0);
 
+    initialLoaded.current = true;
     setLoading(false);
   }
 
@@ -558,7 +561,7 @@ export default function HomeScreen() {
 
   // ── Effects ─────────────────────────────────────────────────
   useFocusEffect(useCallback(() => {
-    setLoading(true);
+    if (!initialLoaded.current) setLoading(true);
     loadData();
   }, []));
 
@@ -620,13 +623,7 @@ export default function HomeScreen() {
 
   // ── Render ──────────────────────────────────────────────────
   if (loading) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.center, { flex: 1 }]}>
-          <ActivityIndicator color={TERRA} />
-        </View>
-      </SafeAreaView>
-    );
+    return <HomeSkeleton />;
   }
 
   return (

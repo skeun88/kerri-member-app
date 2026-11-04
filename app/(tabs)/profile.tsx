@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator,
@@ -75,6 +75,7 @@ export default function ProfileScreen() {
   const [email, setEmail] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const initialLoaded = useRef(false);
   const [totalLessons, setTotalLessons] = useState(0);
   const [pastLessons, setPastLessons] = useState(0);
   const [attendedLessons, setAttendedLessons] = useState(0);
@@ -82,7 +83,7 @@ export default function ProfileScreen() {
 
   async function loadProfile() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); return; }
+    if (!user) { initialLoaded.current = true; setLoading(false); return; }
     setEmail(user.email ?? '');
 
     let { data: mem } = await supabase.from('members').select('*')
@@ -96,7 +97,7 @@ export default function ProfileScreen() {
         mem = memByMeta;
       }
     }
-    if (!mem) { setLoading(false); return; }
+    if (!mem) { initialLoaded.current = true; setLoading(false); return; }
     setProfile(mem);
 
     const attended = mem.lesson_count ?? 0;
@@ -118,11 +119,12 @@ export default function ProfileScreen() {
       setPastLessons(0);
     }
 
+    initialLoaded.current = true;
     setLoading(false);
   }
 
   useFocusEffect(useCallback(() => {
-    setLoading(true);
+    if (!initialLoaded.current) setLoading(true);
     loadProfile();
   }, []));
 
