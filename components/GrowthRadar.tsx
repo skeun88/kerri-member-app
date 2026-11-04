@@ -22,12 +22,12 @@ const GRID_COLOR = '#E8EBEF';
 export const SKILLS = ['포핸드', '백핸드', '서브', '발리', '풋워크', '랠리'] as const;
 export type SkillName = (typeof SKILLS)[number];
 
-const CX = 130;
-const CY = 118;
-const R = 88;
-const SVG_W = 260;
-const SVG_H = 250;
-const LABEL_R = R + 22;
+const CX = 160;
+const CY = 142;
+const R = 84;
+const SVG_W = 320;
+const SVG_H = 290;
+const LABEL_R = R + 24;
 const SEEN_KEY = '@growth_seen_plans_v1';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -155,9 +155,11 @@ function dataPath(displayScores: (number | null)[]): string {
 function HexRadarChart({
   skillScores,
   animPhase,
+  hasPrevious,
 }: {
   skillScores: SkillScoreResult[];
   animPhase: number;
+  hasPrevious: boolean;
 }) {
   const displayCurrent = skillScores.map(s => {
     if (s.current === null) return null;
@@ -168,14 +170,20 @@ function HexRadarChart({
   const displayPrev = skillScores.map(s => s.previous);
 
   const currentPath = dataPath(displayCurrent);
-  const prevPath = dataPath(displayPrev);
+  const prevPath = hasPrevious ? dataPath(displayPrev) : '';
+
+  // Grid label position: on the top-right diagonal axis (between idx 0 and idx 1)
+  const gridLabelAngle = skillAngle(0) + Math.PI / 12; // slightly right of top axis
+  const glx = (val: number) => CX + (val / 10) * R * Math.cos(gridLabelAngle) + 3;
+  const gly = (val: number) => CY + (val / 10) * R * Math.sin(gridLabelAngle);
 
   return (
     <Svg width={SVG_W} height={SVG_H}>
-      {/* Grid hexagons */}
-      {[2, 4, 6, 8, 10].map(val => (
+      {/* Grid hexagons — 5 and 10 slightly thicker */}
+      {[2, 4, 6, 8].map(val => (
         <Path key={val} d={hexPath((val / 10) * R)} fill="none" stroke={GRID_COLOR} strokeWidth={1} />
       ))}
+      <Path d={hexPath(R)} fill="none" stroke={GRID_COLOR} strokeWidth={1.5} />
 
       {/* Axis lines */}
       {SKILLS.map((_, i) => {
@@ -184,6 +192,10 @@ function HexRadarChart({
           <Line key={i} x1={CX} y1={CY} x2={pt.x} y2={pt.y} stroke={GRID_COLOR} strokeWidth={1} />
         );
       })}
+
+      {/* Grid value labels (5 and 10 only, on diagonal to avoid overlap) */}
+      <SvgText x={glx(5)} y={gly(5) + 3} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>5</SvgText>
+      <SvgText x={glx(10)} y={gly(10) + 3} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>10</SvgText>
 
       {/* Previous polygon (gray dashed) */}
       {prevPath ? (
@@ -201,8 +213,8 @@ function HexRadarChart({
         const pt = getPoint(i, displayCurrent[i]!);
         return (
           <G key={i}>
-            <Circle cx={pt.x} cy={pt.y} r={5} fill={TERRA} />
             <Circle cx={pt.x} cy={pt.y} r={8} fill="rgba(192,117,90,0.15)" />
+            <Circle cx={pt.x} cy={pt.y} r={4.5} fill={TERRA} />
           </G>
         );
       })}
@@ -217,13 +229,13 @@ function HexRadarChart({
           i === 0 || i === 3 ? 'middle' :
           i === 1 || i === 2 ? 'start' :
           'end';
-        const dy = i === 0 ? -6 : i === 3 ? 10 : 4;
+        const baseY = i === 0 ? ly - 8 : i === 3 ? ly + 8 : ly + 2;
 
         return (
           <G key={i}>
             <SvgText
               x={lx}
-              y={ly + dy}
+              y={baseY}
               textAnchor={align}
               fontSize={11}
               fontWeight="600"
@@ -234,7 +246,7 @@ function HexRadarChart({
             {!isRated && (
               <SvgText
                 x={lx}
-                y={ly + dy + 13}
+                y={baseY + 13}
                 textAnchor={align}
                 fontSize={9}
                 fill={TEXT_MUTED}
@@ -244,9 +256,9 @@ function HexRadarChart({
             )}
             {isRated && skillScores[i].delta > 0 && animPhase > 0.85 && (
               <SvgText
-                x={lx + (i < 3 ? 10 : i > 3 ? -10 : 0)}
-                y={ly + dy - 10}
-                textAnchor={align}
+                x={i === 1 || i === 2 ? lx + 22 : i === 4 || i === 5 ? lx - 22 : lx}
+                y={baseY - 10}
+                textAnchor="middle"
                 fontSize={10}
                 fontWeight="700"
                 fill={TERRA}
@@ -257,11 +269,6 @@ function HexRadarChart({
           </G>
         );
       })}
-
-      {/* Grid value labels */}
-      <SvgText x={CX + 3} y={CY - R * 0.4 - 4} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>4</SvgText>
-      <SvgText x={CX + 3} y={CY - R * 0.6 - 4} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>6</SvgText>
-      <SvgText x={CX + 3} y={CY - R * 0.8 - 4} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>8</SvgText>
     </Svg>
   );
 }
@@ -337,7 +344,10 @@ export function GrowthBalanceCard({
     };
   }, [latestPlanId]);
 
-  const hasAnyRated = skillScores.some(s => s.rated);
+  const ratedCount = skillScores.filter(s => s.rated).length;
+  const ratedSkills = skillScores.filter(s => s.rated);
+  const unratedCount = 6 - ratedCount;
+  const hasPrevious = skillScores.some(s => s.previous !== null);
 
   return (
     <View style={styles.card}>
@@ -355,9 +365,62 @@ export function GrowthBalanceCard({
 
       <ScoreInfoTooltip visible={showInfo} onClose={() => setShowInfo(false)} />
 
-      {hasAnyRated ? (
+      {ratedCount === 0 ? (
+        /* ── 아직 기록 없음 ── */
+        <View style={styles.emptyChart}>
+          <Ionicons name="stats-chart-outline" size={36} color={DIVIDER} />
+          <Text style={styles.emptyChartText}>
+            첫 레슨 기록을 받으면{'\n'}나의 성장 그래프가 시작돼요
+          </Text>
+        </View>
+      ) : ratedCount < 3 ? (
+        /* ── 초기 단계 (1~2개 기술) — 차트 미표시 ── */
+        <View style={styles.earlyStage}>
+          <View style={styles.progressLabelRow}>
+            <Text style={styles.progressLabel}>{ratedCount}/6 기술 기록 완료</Text>
+          </View>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${(ratedCount / 6) * 100}%` as any }]} />
+          </View>
+          <Text style={styles.progressHint}>3개 기술 기록이 쌓이면 성장 밸런스가 완성돼요</Text>
+
+          {ratedSkills.map(s => (
+            <View key={s.skill} style={styles.earlySkillCard}>
+              <View style={styles.earlySkillLeft}>
+                <Text style={styles.earlySkillName}>{s.skill}</Text>
+                {s.status ? (
+                  <Text style={styles.earlySkillStatus}>{getStatusMsg(s.status)}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.earlySkillScore}>현재 {s.current}점</Text>
+            </View>
+          ))}
+
+          {unratedCount > 0 && (
+            <View style={styles.unratedHint}>
+              <Ionicons name="ellipsis-horizontal-circle-outline" size={15} color={TEXT_MUTED} />
+              <Text style={styles.unratedHintText}>아직 기록되지 않은 기술 {unratedCount}개</Text>
+            </View>
+          )}
+        </View>
+      ) : (
+        /* ── 차트 표시 (3개 이상) ── */
         <>
-          <HexRadarChart skillScores={skillScores} animPhase={animPhase} />
+          <HexRadarChart skillScores={skillScores} animPhase={animPhase} hasPrevious={hasPrevious} />
+
+          {/* Legend — only when previous data exists */}
+          {hasPrevious && (
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={styles.legendLineTerra} />
+                <Text style={styles.legendText}>현재</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={styles.legendLinePrev} />
+                <Text style={styles.legendText}>이전</Text>
+              </View>
+            </View>
+          )}
 
           {/* Score chips */}
           <View style={styles.scoreRow}>
@@ -366,20 +429,18 @@ export function GrowthBalanceCard({
                 <Text style={[styles.scoreChipLabel, !s.rated && styles.scoreChipLabelMuted]}>
                   {s.skill}
                 </Text>
-                <Text style={[styles.scoreChipVal, !s.rated && styles.scoreChipValMuted]}>
-                  {s.rated ? s.current : '—'}
-                </Text>
+                {s.rated ? (
+                  <Text style={styles.scoreChipVal}>
+                    {s.current}
+                    {s.delta > 0 ? ' ↑' : s.delta < 0 ? ' ↓' : ''}
+                  </Text>
+                ) : (
+                  <Text style={styles.scoreChipValMuted}>—</Text>
+                )}
               </View>
             ))}
           </View>
         </>
-      ) : (
-        <View style={styles.emptyChart}>
-          <Ionicons name="stats-chart-outline" size={36} color={DIVIDER} />
-          <Text style={styles.emptyChartText}>
-            첫 레슨 기록을 받으면{'\n'}나의 성장 그래프가 시작돼요
-          </Text>
-        </View>
       )}
 
       <View style={styles.guideRow}>
@@ -529,6 +590,47 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+
+  // ── Early stage (1~2 skills) ──
+  earlyStage: { paddingTop: 8, gap: 0 },
+  progressLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginTop: 4 },
+  progressLabel: { fontSize: 13, fontWeight: '700', color: TERRA },
+  progressBarBg: {
+    height: 6, backgroundColor: DIVIDER, borderRadius: 3,
+    overflow: 'hidden', marginBottom: 8,
+  },
+  progressBarFill: { height: '100%' as any, backgroundColor: TERRA, borderRadius: 3 },
+  progressHint: { fontSize: 12, color: TEXT_MUTED, marginBottom: 14 },
+
+  earlySkillCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: GOAL_BG, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8,
+  },
+  earlySkillLeft: { gap: 2 },
+  earlySkillName: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
+  earlySkillStatus: { fontSize: 12, color: TERRA, fontWeight: '600' },
+  earlySkillScore: { fontSize: 20, fontWeight: '800', color: TERRA },
+
+  unratedHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, marginTop: 2,
+  },
+  unratedHintText: { fontSize: 12, color: TEXT_MUTED },
+
+  // ── Legend ──
+  legendRow: {
+    flexDirection: 'row', gap: 16, justifyContent: 'center',
+    marginTop: 4, marginBottom: 4,
+  },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendLineTerra: { width: 20, height: 2.5, backgroundColor: TERRA, borderRadius: 2 },
+  legendLinePrev: {
+    width: 20, height: 2,
+    backgroundColor: '#bbb', borderRadius: 2,
+    borderStyle: 'dashed', borderWidth: 1, borderColor: '#bbb',
+  },
+  legendText: { fontSize: 11, color: TEXT_MUTED },
 
   scoreRow: {
     flexDirection: 'row',
