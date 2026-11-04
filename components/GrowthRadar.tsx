@@ -391,24 +391,40 @@ export function GrowthBalanceCard({
         </View>
       )}
 
-      {/* Score chips */}
-      <View style={styles.scoreRow}>
-        {skillScores.map(s => (
-          <View key={s.skill} style={[styles.scoreChip, !s.rated && styles.scoreChipUnrated]}>
-            <Text style={[styles.scoreChipLabel, !s.rated && styles.scoreChipLabelMuted]}>
-              {s.skill}
-            </Text>
-            {s.rated ? (
-              <Text style={styles.scoreChipVal}>
-                {s.current}
-                {s.delta > 0 ? ' ↑' : s.delta < 0 ? ' ↓' : ''}
-              </Text>
-            ) : (
-              <Text style={styles.scoreChipValMuted}>—</Text>
-            )}
-          </View>
-        ))}
-      </View>
+      {/* Score list / empty state */}
+      {ratedCount === 0 ? (
+        <View style={styles.emptyChart}>
+          <Text style={styles.emptyChartText}>
+            첫 레슨 기록을 받으면{'\n'}나의 성장 그래프가 시작돼요
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.scoreList}>
+          {skillScores.filter(s => s.rated).map(s => {
+            const statusMsg = getStatusMsg(s.status);
+            const statusSt = getStatusStyle(s.status);
+            return (
+              <View key={s.skill} style={styles.scoreListRow}>
+                <Text style={styles.scoreListSkill}>{s.skill}</Text>
+                <View style={styles.scoreListRight}>
+                  {statusMsg ? (
+                    <View style={[styles.scoreListBadge, { backgroundColor: statusSt.bg }]}>
+                      <Text style={[styles.scoreListBadgeText, { color: statusSt.text }]}>{statusMsg}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.scoreListVal}>현재 {s.current}점</Text>
+                </View>
+              </View>
+            );
+          })}
+          {ratedCount < 6 && (
+            <View style={styles.unratedHint}>
+              <Ionicons name="ellipsis-horizontal-circle-outline" size={15} color={TEXT_MUTED} />
+              <Text style={styles.unratedHintText}>아직 기록되지 않은 기술 {6 - ratedCount}개</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       <View style={styles.guideRow}>
         <Ionicons name="leaf-outline" size={13} color={TEXT_MUTED} />
@@ -628,6 +644,20 @@ const styles = StyleSheet.create({
   scoreChipLabelMuted: { color: TEXT_MUTED },
   scoreChipVal: { fontSize: 15, fontWeight: '800', color: TERRA },
   scoreChipValMuted: { color: TEXT_MUTED },
+
+  // ── Score list (new format: 기술명 · 향상 +1 · 현재 N점) ──
+  scoreList: { marginTop: 10, gap: 0 },
+  scoreListRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: DIVIDER,
+  },
+  scoreListSkill: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
+  scoreListRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scoreListBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
+  scoreListBadgeText: { fontSize: 11, fontWeight: '700' },
+  scoreListVal: { fontSize: 13, fontWeight: '700', color: TERRA },
 
   guideRow: {
     flexDirection: 'row',
