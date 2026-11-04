@@ -12,10 +12,10 @@ import { notifyCoachBoganRequest, notifyCoachBoganCancel } from '../../lib/notif
 import { Radius, Shadow } from '../../lib/theme';
 import { ScheduleSkeleton } from '../../components/Skeleton';
 import {
-  GrowthReport, toLines,
+  GrowthReport,
 } from '../../components/GrowthDashboard';
 import {
-  computeSkillScores, GrowthBalanceCard, RecentSkillChanges,
+  computeSkillScores, computeChangeEvents, GrowthBalanceCard, RecentChangesCard, InsightsCard,
 } from '../../components/GrowthRadar';
 
 // ── Design tokens (홈 화면과 동일 팔레트) ──────────────────────
@@ -673,7 +673,7 @@ export default function ScheduleScreen() {
 
     const { data: planData } = await supabase
       .from('member_lesson_plan_view')
-      .select('id, created_at, lesson_comparison, next_goals')
+      .select('id, created_at, lesson_comparison, next_goals, achievements, improvement_points')
       .eq('member_id', mem.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -689,11 +689,13 @@ export default function ScheduleScreen() {
       setGrowthReports(
         planData
           .filter((p: any) => sentIds.has(p.id))
-          .map((p: { id: string; created_at: string; lesson_comparison: unknown; next_goals: unknown }) => ({
+          .map((p: { id: string; created_at: string; lesson_comparison: unknown; next_goals: unknown; achievements: unknown; improvement_points: unknown }) => ({
             plan_id: p.id,
             created_at: p.created_at,
             lesson_comparison: Array.isArray(p.lesson_comparison) ? p.lesson_comparison : null,
             next_goals_raw: (p.next_goals as string[] | string | null) ?? null,
+            achievements: Array.isArray(p.achievements) ? p.achievements as string[] : null,
+            improvement_points_raw: (p.improvement_points as string[] | string | null) ?? null,
           }))
       );
     } else {
@@ -1051,17 +1053,18 @@ export default function ScheduleScreen() {
         {tab === 'report' && (() => {
           const skillScores = computeSkillScores(growthReports);
           const latestPlanId = growthReports[0]?.plan_id ?? null;
-          const latestNextGoals = toLines(growthReports[0]?.next_goals_raw ?? null);
+          const changeEvents = computeChangeEvents(growthReports);
           return (
             <View style={{ padding: 20, gap: 12 }}>
               <GrowthBalanceCard
                 skillScores={skillScores}
                 latestPlanId={latestPlanId}
               />
-              <RecentSkillChanges
-                skillScores={skillScores}
-                latestNextGoals={latestNextGoals}
+              <RecentChangesCard
+                changeEvents={changeEvents}
+                reports={growthReports}
               />
+              <InsightsCard reports={growthReports} />
             </View>
           );
         })()}

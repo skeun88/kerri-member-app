@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,18 +22,19 @@ const GRID_COLOR = '#E8EBEF';
 export const SKILLS = ['포핸드', '백핸드', '서브', '발리', '풋워크', '랠리'] as const;
 export type SkillName = (typeof SKILLS)[number];
 
+export const BASE_SCORE = 20; // 모든 기술의 기본 포인트
 const CX = 160;
 const CY = 142;
 const R = 84;
 const SVG_W = 320;
 const SVG_H = 290;
 const LABEL_R = R + 24;
-const SEEN_KEY = '@growth_seen_plans_v1';
+const SEEN_KEY = '@growth_seen_plans_v2'; // v2: 0-100 scale
 
 // ── Types ──────────────────────────────────────────────────────
 export interface SkillScoreResult {
   skill: SkillName;
-  current: number | null;
+  current: number | null; // null = never evaluated
   previous: number | null;
   delta: number;
   rated: boolean;
@@ -42,7 +43,16 @@ export interface SkillScoreResult {
   planId: string | null;
 }
 
-// ── Helpers ────────────────────────────────────────────────────
+export interface SkillChangeEvent {
+  date: string;
+  skill: SkillName;
+  status: string;
+  delta: number;
+  reason: string | null;
+  planId: string;
+}
+
+// ── Score helpers ──────────────────────────────────────────────
 const SKILL_EN_TO_KO: Record<string, SkillName> = {
   forehand: '포핸드', backhand: '백핸드',
   serve: '서브', volley: '발리',
@@ -50,13 +60,24 @@ const SKILL_EN_TO_KO: Record<string, SkillName> = {
 };
 
 function detectSkill(c: { point: string; skill?: string | null }): SkillName | null {
-  // Use AI-assigned skill field first (new records)
   if (c.skill && SKILL_EN_TO_KO[c.skill]) return SKILL_EN_TO_KO[c.skill];
-  // Fall back to keyword matching in point text (existing records)
   for (const s of SKILLS) {
     if (c.point.includes(s)) return s;
   }
   return null;
+}
+
+function getDelta(score: number, status: string): number {
+  if (status === 'improved') {
+    if (score < 40) return 3;
+    if (score < 60) return 2;
+    if (score < 80) return 1;
+    return 0.5;
+  }
+  if (status === 'needs_work' || status === 'regressed') {
+    return score < 80 ? -1 : -0.5;
+  }
+  return 0;
 }
 
 function accumulate(reports: GrowthReport[]): Partial<Record<SkillName, number>> {
@@ -68,23 +89,19 @@ function accumulate(reports: GrowthReport[]): Partial<Record<SkillName, number>>
       const skill = detectSkill(c as any);
       if (!skill || seenThisLesson.has(skill)) continue;
       seenThisLesson.add(skill);
-      const isFirst = scores[skill] === undefined;
-      const base = isFirst ? 5 : scores[skill]!;
-      const delta =
-        c.status === 'improved' ? 1 :
-        c.status === 'needs_work' || c.status === 'regressed' ? -1 : 0;
-      scores[skill] = Math.max(0, Math.min(10, base + delta));
+      const base = scores[skill] ?? BASE_SCORE;
+      const delta = getDelta(base, c.status);
+      scores[skill] = Math.max(0, Math.min(100, base + delta));
     }
   }
   return scores;
 }
 
 export function computeSkillScores(reports: GrowthReport[]): SkillScoreResult[] {
-  const oldest = [...reports].reverse(); // oldest first
+  const oldest = [...reports].reverse();
   const all = accumulate(oldest);
   const prev = oldest.length > 1 ? accumulate(oldest.slice(0, -1)) : {};
 
-  // Extract latest lesson's per-skill status/reason
   const latest = reports[0];
   const latestInfo: Partial<Record<SkillName, { status: string; reason?: string; planId: string }>> = {};
   if (latest?.lesson_comparison) {
@@ -103,15 +120,11 @@ export function computeSkillScores(reports: GrowthReport[]): SkillScoreResult[] 
     const info = latestInfo[skill];
     const delta = current !== null && previous !== null
       ? current - previous
-      : current !== null && previous === null
-      ? current - 5
+      : current !== null
+      ? current - BASE_SCORE
       : 0;
     return {
-      skill,
-      current,
-      previous,
-      delta,
-      rated,
+      skill, current, previous, delta, rated,
       status: info?.status ?? null,
       reason: info?.reason ?? null,
       planId: info?.planId ?? null,
@@ -119,14 +132,35 @@ export function computeSkillScores(reports: GrowthReport[]): SkillScoreResult[] 
   });
 }
 
-// ── SVG Radar Chart Helpers ────────────────────────────────────
-function skillAngle(i: number) {
-  return -Math.PI / 2 + i * (Math.PI / 3);
+export function computeChangeEvents(reports: GrowthReport[]): SkillChangeEvent[] {
+  const events: SkillChangeEvent[] = [];
+  const oldest = [...reports].reverse();
+  const running: Partial<Record<SkillName, number>> = {};
+
+  for (const r of oldest) {
+    if (!r.lesson_comparison) continue;
+    const seenThisLesson = new Set<SkillName>();
+    for (const c of r.lesson_comparison) {
+      const skill = detectSkill(c as any);
+      if (!skill || seenThisLesson.has(skill)) continue;
+      seenThisLesson.add(skill);
+      const before = running[skill] ?? BASE_SCORE;
+      const delta = getDelta(before, c.status);
+      running[skill] = Math.max(0, Math.min(100, before + delta));
+      if (c.status) {
+        events.push({ date: r.created_at, skill, status: c.status, delta, reason: c.reason ?? null, planId: r.plan_id });
+      }
+    }
+  }
+  return events.reverse();
 }
+
+// ── SVG helpers ────────────────────────────────────────────────
+function skillAngle(i: number) { return -Math.PI / 2 + i * (Math.PI / 3); }
 
 function getPoint(i: number, score: number) {
   const a = skillAngle(i);
-  const r = (score / 10) * R;
+  const r = (score / 100) * R; // 0-100 scale
   return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) };
 }
 
@@ -138,15 +172,11 @@ function hexPath(r: number): string {
   return `M${pts.join('L')}Z`;
 }
 
-function dataPath(displayScores: (number | null)[]): string {
-  const rated = displayScores
-    .map((s, i) => (s !== null ? i : -1))
-    .filter(i => i >= 0);
-  if (rated.length < 2) return '';
+function closedDataPath(scores: number[]): string {
   let path = '';
-  rated.forEach((i, k) => {
-    const pt = getPoint(i, displayScores[i]!);
-    path += (k === 0 ? 'M' : 'L') + `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+  scores.forEach((score, i) => {
+    const pt = getPoint(i, score);
+    path += (i === 0 ? 'M' : 'L') + `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
   });
   return path + 'Z';
 }
@@ -161,62 +191,44 @@ function HexRadarChart({
   animPhase: number;
   hasPrevious: boolean;
 }) {
+  // All 6 always have a display value (unrated = BASE_SCORE)
   const displayCurrent = skillScores.map(s => {
-    if (s.current === null) return null;
-    const from = s.previous ?? 5;
-    return from + (s.current - from) * animPhase;
+    const target = s.current ?? BASE_SCORE;
+    const from = s.previous ?? BASE_SCORE;
+    return from + (target - from) * animPhase;
   });
 
-  const displayPrev = skillScores.map(s => s.previous);
+  const displayPrev = skillScores.map(s => s.previous ?? BASE_SCORE);
 
-  const currentPath = dataPath(displayCurrent);
-  const prevPath = hasPrevious ? dataPath(displayPrev) : '';
-
-  const allRated = skillScores.every(s => s.rated);
+  const currentPath = closedDataPath(displayCurrent);
+  const prevPath = hasPrevious ? closedDataPath(displayPrev) : '';
 
   return (
     <Svg width={SVG_W} height={SVG_H}>
-      {/* Grid hexagons */}
-      {[2, 4, 6, 8].map(val => (
-        <Path key={val} d={hexPath((val / 10) * R)} fill="none" stroke={GRID_COLOR} strokeWidth={1} />
+      {/* Grid rings at 20/40/60/80/100 */}
+      {[20, 40, 60, 80].map(val => (
+        <Path key={val} d={hexPath((val / 100) * R)} fill="none" stroke={GRID_COLOR} strokeWidth={1} />
       ))}
       <Path d={hexPath(R)} fill="none" stroke={GRID_COLOR} strokeWidth={1.5} />
 
       {/* Axis lines */}
       {SKILLS.map((_, i) => {
-        const pt = getPoint(i, 10);
-        return (
-          <Line key={i} x1={CX} y1={CY} x2={pt.x} y2={pt.y} stroke={GRID_COLOR} strokeWidth={1} />
-        );
+        const pt = getPoint(i, 100);
+        return <Line key={i} x1={CX} y1={CY} x2={pt.x} y2={pt.y} stroke={GRID_COLOR} strokeWidth={1} />;
       })}
 
-      {/* Previous polygon (gray dashed) — only when all axes rated */}
-      {prevPath && allRated ? (
+      {/* Previous polygon */}
+      {prevPath ? (
         <Path d={prevPath} fill={TERRA_PREV} stroke="#bbb" strokeWidth={1.5} strokeDasharray="4,3" />
       ) : null}
 
-      {allRated ? (
-        /* Filled closed polygon when all 6 skills rated */
-        currentPath ? (
-          <Path d={currentPath} fill={TERRA_FILL} stroke={TERRA} strokeWidth={2.5} />
-        ) : null
-      ) : (
-        /* Lines from center to each rated skill when partial */
-        <>
-          {skillScores.map((s, i) => {
-            if (displayCurrent[i] === null) return null;
-            const pt = getPoint(i, displayCurrent[i]!);
-            return (
-              <Line key={i} x1={CX} y1={CY} x2={pt.x} y2={pt.y} stroke={TERRA} strokeWidth={2} />
-            );
-          })}
-        </>
-      )}
+      {/* Current polygon */}
+      <Path d={currentPath} fill={TERRA_FILL} stroke={TERRA} strokeWidth={2.5} />
 
-      {/* Current vertex dots */}
+      {/* Dots only for rated skills */}
       {skillScores.map((s, i) => {
-        if (displayCurrent[i] === null) return null;
-        const pt = getPoint(i, displayCurrent[i]!);
+        if (!s.rated) return null;
+        const pt = getPoint(i, displayCurrent[i]);
         return (
           <G key={i}>
             <Circle cx={pt.x} cy={pt.y} r={8} fill="rgba(192,117,90,0.15)" />
@@ -231,45 +243,25 @@ function HexRadarChart({
         const lx = CX + LABEL_R * Math.cos(a);
         const ly = CY + LABEL_R * Math.sin(a);
         const isRated = skillScores[i].rated;
-        const align =
-          i === 0 || i === 3 ? 'middle' :
-          i === 1 || i === 2 ? 'start' :
-          'end';
+        const align = i === 0 || i === 3 ? 'middle' : i === 1 || i === 2 ? 'start' : 'end';
         const baseY = i === 0 ? ly - 8 : i === 3 ? ly + 8 : ly + 2;
+        const delta = skillScores[i].delta;
 
         return (
           <G key={i}>
-            <SvgText
-              x={lx}
-              y={baseY}
-              textAnchor={align}
-              fontSize={11}
-              fontWeight="600"
-              fill={isRated ? TEXT_PRIMARY : TEXT_MUTED}
-            >
+            <SvgText x={lx} y={baseY} textAnchor={align} fontSize={11} fontWeight="600"
+              fill={isRated ? TEXT_PRIMARY : TEXT_MUTED}>
               {name}
             </SvgText>
             {!isRated && (
-              <SvgText
-                x={lx}
-                y={baseY + 13}
-                textAnchor={align}
-                fontSize={9}
-                fill={TEXT_MUTED}
-              >
-                기록 전
-              </SvgText>
+              <SvgText x={lx} y={baseY + 13} textAnchor={align} fontSize={9} fill={TEXT_MUTED}>기본 20</SvgText>
             )}
-            {isRated && skillScores[i].delta > 0 && animPhase > 0.85 && (
+            {isRated && delta > 0 && animPhase > 0.85 && (
               <SvgText
-                x={i === 1 || i === 2 ? lx + 22 : i === 4 || i === 5 ? lx - 22 : lx}
-                y={baseY - 10}
-                textAnchor="middle"
-                fontSize={10}
-                fontWeight="700"
-                fill={TERRA}
+                x={i === 1 || i === 2 ? lx + 24 : i === 4 || i === 5 ? lx - 24 : lx}
+                y={baseY - 10} textAnchor="middle" fontSize={10} fontWeight="700" fill={TERRA}
               >
-                +1
+                +{delta % 1 === 0 ? delta : delta.toFixed(1)}
               </SvgText>
             )}
           </G>
@@ -286,10 +278,15 @@ function ScoreInfoTooltip({ visible, onClose }: { visible: boolean; onClose: () 
     <Pressable style={tip.backdrop} onPress={onClose}>
       <View style={tip.bubble}>
         <Text style={tip.text}>
-          코치가 확인한 레슨 기록을 바탕으로{'\n'}
-          향상 +1, 유지 0, 보완 필요 −1이 반영돼요.{'\n'}
-          기술별 첫 기록은 5점에서 시작하며,{'\n'}
-          공식 실력 평가나 다른 회원과의{'\n'}비교 점수는 아니에요.
+          모든 기술은 기본 20포인트에서 시작해요.{'\n'}
+          코치가 확인한 레슨 기록에 따라{'\n'}향상은 상승, 유지는 그대로,{'\n'}보완 필요는 소폭 하락해요.{'\n'}
+          포인트가 높아질수록 상승폭은 작아져요.{'\n\n'}
+          {'구간별 향상 포인트:\n'}
+          {'0~40점 미만 → +3\n'}
+          {'40~60점 미만 → +2\n'}
+          {'60~80점 미만 → +1\n'}
+          {'80~100점 → +0.5\n\n'}
+          공식 실력 등급이나 회원 간 비교가{'\n'}아닌 나의 변화를 기록하는 지표예요.
         </Text>
         <View style={tip.arrow} />
       </View>
@@ -297,7 +294,48 @@ function ScoreInfoTooltip({ visible, onClose }: { visible: boolean; onClose: () 
   );
 }
 
-// ── Main Balance Card ──────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────
+function getStatusStyle(status: string | null): { label: string; bg: string; text: string } {
+  switch (status) {
+    case 'improved':  return { label: '향상', bg: '#ECFDF5', text: '#059669' };
+    case 'needs_work':
+    case 'regressed': return { label: '보완 필요', bg: GOAL_BG, text: TERRA };
+    case 'maintained':
+    case 'same':      return { label: '유지', bg: '#F4F6F9', text: TEXT_MUTED };
+    default:          return { label: '기록중', bg: BG, text: TEXT_MUTED };
+  }
+}
+
+function statusLabel(status: string | null): string {
+  switch (status) {
+    case 'improved':  return '향상';
+    case 'needs_work':
+    case 'regressed': return '보완 필요';
+    case 'maintained':
+    case 'same':      return '유지';
+    default:          return '';
+  }
+}
+
+function formatDelta(delta: number): string {
+  if (delta === 0) return '';
+  const abs = Math.abs(delta);
+  const str = abs % 1 === 0 ? String(abs) : abs.toFixed(1);
+  return delta > 0 ? `+${str}` : `-${str}`;
+}
+
+function nextTenPoints(score: number): number | null {
+  if (score >= 100) return null;
+  const next = Math.floor(score / 10) * 10 + 10;
+  return next - score;
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// ── Growth Balance Card ────────────────────────────────────────
 export function GrowthBalanceCard({
   skillScores,
   latestPlanId,
@@ -316,11 +354,8 @@ export function GrowthBalanceCard({
     AsyncStorage.getItem(SEEN_KEY).then(raw => {
       if (cancelled) return;
       const seen: string[] = raw ? JSON.parse(raw) : [];
-      const isNew = !seen.includes(latestPlanId);
+      if (seen.includes(latestPlanId)) return;
 
-      if (!isNew) return;
-
-      // Animate
       setAnimPhase(0);
       const startTime = Date.now();
       const duration = 900;
@@ -329,18 +364,15 @@ export function GrowthBalanceCard({
         if (cancelled) return;
         const elapsed = Date.now() - startTime;
         const t = Math.min(elapsed / duration, 1);
-        const eased = 1 - Math.pow(1 - t, 3);
-        setAnimPhase(eased);
+        setAnimPhase(1 - Math.pow(1 - t, 3));
         if (t < 1) {
           animRef.current = requestAnimationFrame(step);
         } else {
-          // Mark as seen
           seen.push(latestPlanId);
           if (seen.length > 150) seen.splice(0, seen.length - 150);
           AsyncStorage.setItem(SEEN_KEY, JSON.stringify(seen));
         }
       };
-
       animRef.current = requestAnimationFrame(step);
     });
 
@@ -351,34 +383,34 @@ export function GrowthBalanceCard({
   }, [latestPlanId]);
 
   const ratedCount = skillScores.filter(s => s.rated).length;
+  const ratedSkills = skillScores.filter(s => s.rated);
   const hasPrevious = skillScores.some(s => s.previous !== null);
-  const allRated = ratedCount === 6;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>나의 성장 밸런스</Text>
-        <View style={styles.headerRight}>
-          {ratedCount > 0 && (
+        <View>
+          <Text style={styles.cardTitle}>나의 성장 밸런스</Text>
+          {ratedCount > 0 && ratedCount < 6 && (
             <Text style={styles.progressSmall}>{ratedCount}/6 기술 기록 완료</Text>
           )}
-          <TouchableOpacity
-            style={styles.infoBtn}
-            onPress={() => setShowInfo(v => !v)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="information-circle-outline" size={18} color={TEXT_MUTED} />
-            <Text style={styles.infoBtnText}>점수 안내</Text>
-          </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          style={styles.infoBtn}
+          onPress={() => setShowInfo(v => !v)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="information-circle-outline" size={18} color={TEXT_MUTED} />
+          <Text style={styles.infoBtnText}>점수 안내</Text>
+        </TouchableOpacity>
       </View>
 
       <ScoreInfoTooltip visible={showInfo} onClose={() => setShowInfo(false)} />
 
       <HexRadarChart skillScores={skillScores} animPhase={animPhase} hasPrevious={hasPrevious} />
 
-      {/* Legend — only when all rated and previous data exists */}
-      {hasPrevious && allRated && (
+      {/* Legend */}
+      {hasPrevious && (
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
             <View style={styles.legendLineTerra} />
@@ -391,28 +423,33 @@ export function GrowthBalanceCard({
         </View>
       )}
 
-      {/* Score list / empty state */}
       {ratedCount === 0 ? (
         <View style={styles.emptyChart}>
           <Text style={styles.emptyChartText}>
-            첫 레슨 기록을 받으면{'\n'}나의 성장 그래프가 시작돼요
+            첫 레슨 기록부터 나의 변화가 쌓여요
           </Text>
         </View>
       ) : (
         <View style={styles.scoreList}>
-          {skillScores.filter(s => s.rated).map(s => {
-            const statusMsg = getStatusMsg(s.status);
-            const statusSt = getStatusStyle(s.status);
+          {ratedSkills.map(s => {
+            const st = getStatusStyle(s.status);
+            const dStr = formatDelta(s.delta);
+            const toNext = s.delta > 0 && s.current !== null ? nextTenPoints(s.current) : null;
             return (
               <View key={s.skill} style={styles.scoreListRow}>
                 <Text style={styles.scoreListSkill}>{s.skill}</Text>
                 <View style={styles.scoreListRight}>
-                  {statusMsg ? (
-                    <View style={[styles.scoreListBadge, { backgroundColor: statusSt.bg }]}>
-                      <Text style={[styles.scoreListBadgeText, { color: statusSt.text }]}>{statusMsg}</Text>
+                  {dStr ? (
+                    <View style={[styles.scoreListBadge, { backgroundColor: st.bg }]}>
+                      <Text style={[styles.scoreListBadgeText, { color: st.text }]}>{dStr}</Text>
                     </View>
                   ) : null}
-                  <Text style={styles.scoreListVal}>현재 {s.current}점</Text>
+                  <View>
+                    <Text style={styles.scoreListVal}>현재 {s.current}점</Text>
+                    {toNext !== null && (
+                      <Text style={styles.scoreListHint}>다음 10단위까지 {toNext}점</Text>
+                    )}
+                  </View>
                 </View>
               </View>
             );
@@ -420,7 +457,7 @@ export function GrowthBalanceCard({
           {ratedCount < 6 && (
             <View style={styles.unratedHint}>
               <Ionicons name="ellipsis-horizontal-circle-outline" size={15} color={TEXT_MUTED} />
-              <Text style={styles.unratedHintText}>아직 기록되지 않은 기술 {6 - ratedCount}개</Text>
+              <Text style={styles.unratedHintText}>아직 기록되지 않은 기술 {6 - ratedCount}개 · 기본 20점</Text>
             </View>
           )}
         </View>
@@ -435,81 +472,58 @@ export function GrowthBalanceCard({
 }
 
 // ── Recent Changes Card ────────────────────────────────────────
-function getStatusStyle(status: string | null): { label: string; bg: string; text: string } {
-  switch (status) {
-    case 'improved':   return { label: '향상', bg: '#ECFDF5', text: '#059669' };
-    case 'needs_work':
-    case 'regressed':  return { label: '보완 필요', bg: GOAL_BG, text: TERRA };
-    case 'maintained':
-    case 'same':       return { label: '유지', bg: '#F4F6F9', text: TEXT_MUTED };
-    default:           return { label: '기록중', bg: BG, text: TEXT_MUTED };
-  }
-}
-
-function getStatusMsg(status: string | null): string {
-  switch (status) {
-    case 'improved':   return '향상 +1';
-    case 'needs_work':
-    case 'regressed':  return '보완 필요 −1';
-    case 'maintained':
-    case 'same':       return '유지 0';
-    default:           return '';
-  }
-}
-
-function getMotivationMsg(status: string | null): string | null {
-  switch (status) {
-    case 'maintained':
-    case 'same':       return '배운 감각을 꾸준히 이어가고 있어요';
-    case 'needs_work':
-    case 'regressed':  return '다음 레슨에서 함께 다듬어봐요';
-    default:           return null;
-  }
-}
-
-export function RecentSkillChanges({
-  skillScores,
-  latestNextGoals,
+export function RecentChangesCard({
+  changeEvents,
+  reports,
 }: {
-  skillScores: SkillScoreResult[];
-  latestNextGoals: string[];
+  changeEvents: SkillChangeEvent[];
+  reports: GrowthReport[];
 }) {
   const router = useRouter();
+  const shown = changeEvents.slice(0, 3);
 
-  // Only show skills with a status from the latest lesson
-  const changed = skillScores.filter(s => s.status !== null && s.planId !== null);
+  if (shown.length === 0) return null;
 
-  if (changed.length === 0) return null;
+  const latestNextGoals = toLines(reports[0]?.next_goals_raw ?? null);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>최근 변화</Text>
+      <View style={styles.changeCardHeader}>
+        <Text style={styles.cardTitle}>이전 대비 변화</Text>
+        {changeEvents.length > 3 && (
+          <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/report' } as never)}>
+            <Text style={styles.seeAllText}>전체 변화 기록 보기</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
-      {changed.map((s, i) => {
-        const style = getStatusStyle(s.status);
-        const msg = getStatusMsg(s.status);
-        const motivation = getMotivationMsg(s.status);
+      {shown.map((ev, i) => {
+        const st = getStatusStyle(ev.status);
+        const dStr = formatDelta(ev.delta);
+        const noComparison = ev.status === 'maintained' || ev.status === 'same';
         return (
           <TouchableOpacity
-            key={s.skill}
-            style={[styles.changeRow, i < changed.length - 1 && styles.changeRowBorder]}
-            onPress={() => s.planId && router.push({ pathname: '/(tabs)/report' } as never)}
+            key={i}
+            style={[styles.changeRow, i < shown.length - 1 && styles.changeRowBorder]}
+            onPress={() => router.push({ pathname: '/(tabs)/report' } as never)}
             activeOpacity={0.75}
           >
             <View style={styles.changeMain}>
               <View style={styles.changeTopRow}>
-                <Text style={styles.changeSkill}>{s.skill}</Text>
-                {msg ? (
-                  <View style={[styles.changeBadge, { backgroundColor: style.bg }]}>
-                    <Text style={[styles.changeBadgeText, { color: style.text }]}>{msg}</Text>
-                  </View>
-                ) : null}
+                <Text style={styles.changeDate}>{formatDate(ev.date)}</Text>
+                <Text style={styles.changeSkill}>{ev.skill}</Text>
+                <View style={[styles.changeBadge, { backgroundColor: st.bg }]}>
+                  <Text style={[styles.changeBadgeText, { color: st.text }]}>
+                    {statusLabel(ev.status)}{dStr ? ` ${dStr}` : ''}
+                  </Text>
+                </View>
               </View>
-              {s.reason ? (
-                <Text style={styles.changeReason} numberOfLines={2}>{s.reason}</Text>
-              ) : null}
-              {motivation ? (
-                <Text style={styles.motivationText}>{motivation}</Text>
+              {ev.reason ? (
+                <Text style={styles.changeReason} numberOfLines={1}>{ev.reason}</Text>
+              ) : noComparison ? (
+                <Text style={styles.motivationText}>배운 감각을 꾸준히 이어가고 있어요</Text>
+              ) : ev.status === 'needs_work' || ev.status === 'regressed' ? (
+                <Text style={styles.motivationText}>다음 레슨에서 함께 다듬어봐요</Text>
               ) : null}
             </View>
             <Ionicons name="chevron-forward" size={15} color={DIVIDER} />
@@ -523,9 +537,123 @@ export function RecentSkillChanges({
             <Ionicons name="locate-outline" size={13} color={TERRA} />
             <Text style={styles.nextGoalTitle}>다음 레슨에서 이어갈 목표</Text>
           </View>
-          <Text style={styles.nextGoalText} numberOfLines={3}>
-            {latestNextGoals[0]}
-          </Text>
+          <Text style={styles.nextGoalText} numberOfLines={2}>{latestNextGoals[0]}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Legacy export for any older callers
+export function RecentSkillChanges({
+  skillScores,
+  latestNextGoals,
+}: {
+  skillScores: SkillScoreResult[];
+  latestNextGoals: string[];
+}) {
+  const router = useRouter();
+  const changed = skillScores.filter(s => s.status !== null && s.planId !== null);
+  if (changed.length === 0) return null;
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>최근 변화</Text>
+      {changed.map((s, i) => {
+        const st = getStatusStyle(s.status);
+        const dStr = formatDelta(s.delta);
+        return (
+          <TouchableOpacity
+            key={s.skill}
+            style={[styles.changeRow, i < changed.length - 1 && styles.changeRowBorder]}
+            onPress={() => s.planId && router.push({ pathname: '/(tabs)/report' } as never)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.changeMain}>
+              <View style={styles.changeTopRow}>
+                <Text style={styles.changeSkill}>{s.skill}</Text>
+                {dStr ? (
+                  <View style={[styles.changeBadge, { backgroundColor: st.bg }]}>
+                    <Text style={[styles.changeBadgeText, { color: st.text }]}>{dStr}</Text>
+                  </View>
+                ) : null}
+              </View>
+              {s.reason ? <Text style={styles.changeReason} numberOfLines={2}>{s.reason}</Text> : null}
+            </View>
+            <Ionicons name="chevron-forward" size={15} color={DIVIDER} />
+          </TouchableOpacity>
+        );
+      })}
+      {latestNextGoals.length > 0 && (
+        <View style={styles.nextGoalBox}>
+          <View style={styles.nextGoalHeader}>
+            <Ionicons name="locate-outline" size={13} color={TERRA} />
+            <Text style={styles.nextGoalTitle}>다음 레슨에서 이어갈 목표</Text>
+          </View>
+          <Text style={styles.nextGoalText} numberOfLines={3}>{latestNextGoals[0]}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Insights Card ──────────────────────────────────────────────
+export function InsightsCard({ reports }: { reports: GrowthReport[] }) {
+  const recent = reports.slice(0, 5);
+
+  // Collect unique insights from recent reports
+  const goodPoints: string[] = [];
+  const improvePoints: string[] = [];
+  const goals: string[] = [];
+
+  for (const r of recent) {
+    if (r.achievements) {
+      r.achievements.forEach(a => { if (!goodPoints.includes(a)) goodPoints.push(a); });
+    }
+    const imp = toLines(r.improvement_points_raw ?? null);
+    imp.forEach(p => { if (!improvePoints.includes(p)) improvePoints.push(p); });
+    const ng = toLines(r.next_goals_raw ?? null);
+    ng.forEach(g => { if (!goals.includes(g)) goals.push(g); });
+  }
+
+  const hasContent = goodPoints.length > 0 || improvePoints.length > 0 || goals.length > 0;
+  if (!hasContent) return null;
+
+  return (
+    <View style={styles.insightCard}>
+      <Text style={styles.insightTitle}>핵심 인사이트</Text>
+
+      {goodPoints.length > 0 && (
+        <View style={styles.insightSection}>
+          <View style={styles.insightSectionHead}>
+            <Ionicons name="checkmark-circle-outline" size={14} color={TERRA} />
+            <Text style={styles.insightSectionLabel}>최근 좋아진 점</Text>
+          </View>
+          {goodPoints.slice(0, 2).map((p, i) => (
+            <Text key={i} style={styles.insightText} numberOfLines={2}>{p}</Text>
+          ))}
+        </View>
+      )}
+
+      {improvePoints.length > 0 && (
+        <View style={styles.insightSection}>
+          <View style={styles.insightSectionHead}>
+            <Ionicons name="construct-outline" size={14} color={TERRA} />
+            <Text style={styles.insightSectionLabel}>이어서 다듬을 점</Text>
+          </View>
+          {improvePoints.slice(0, 2).map((p, i) => (
+            <Text key={i} style={styles.insightText} numberOfLines={2}>{p}</Text>
+          ))}
+        </View>
+      )}
+
+      {goals.length > 0 && (
+        <View style={styles.insightSection}>
+          <View style={styles.insightSectionHead}>
+            <Ionicons name="locate-outline" size={14} color={TERRA} />
+            <Text style={styles.insightSectionLabel}>다음 레슨 목표</Text>
+          </View>
+          <Text style={styles.insightText} numberOfLines={2}>{goals[0]}</Text>
         </View>
       )}
     </View>
@@ -546,21 +674,12 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 4,
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressSmall: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: TEXT_MUTED,
-  },
+  progressSmall: { fontSize: 11, fontWeight: '600', color: TEXT_MUTED, marginTop: 2 },
   infoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -572,173 +691,88 @@ const styles = StyleSheet.create({
   },
   infoBtnText: { fontSize: 12, color: TEXT_MUTED, fontWeight: '500' },
 
-  emptyChart: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    gap: 12,
-  },
-  emptyChartText: {
-    fontSize: 14,
-    color: TEXT_MUTED,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
+  emptyChart: { alignItems: 'center', paddingVertical: 16 },
+  emptyChartText: { fontSize: 14, color: TEXT_MUTED, textAlign: 'center', lineHeight: 22 },
 
-  // ── Early stage (1~2 skills) ──
-  earlyStage: { paddingTop: 8, gap: 0 },
-  progressLabelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginTop: 4 },
-  progressLabel: { fontSize: 13, fontWeight: '700', color: TERRA },
-  progressBarBg: {
-    height: 6, backgroundColor: DIVIDER, borderRadius: 3,
-    overflow: 'hidden', marginBottom: 8,
-  },
-  progressBarFill: { height: '100%' as any, backgroundColor: TERRA, borderRadius: 3 },
-  progressHint: { fontSize: 12, color: TEXT_MUTED, marginBottom: 14 },
-
-  earlySkillCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: GOAL_BG, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 10, marginBottom: 8,
-  },
-  earlySkillLeft: { gap: 2 },
-  earlySkillName: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
-  earlySkillStatus: { fontSize: 12, color: TERRA, fontWeight: '600' },
-  earlySkillScore: { fontSize: 20, fontWeight: '800', color: TERRA },
-
-  unratedHint: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: 8, marginTop: 2,
-  },
-  unratedHintText: { fontSize: 12, color: TEXT_MUTED },
-
-  // ── Legend ──
-  legendRow: {
-    flexDirection: 'row', gap: 16, justifyContent: 'center',
-    marginTop: 4, marginBottom: 4,
-  },
+  legendRow: { flexDirection: 'row', gap: 16, justifyContent: 'center', marginTop: 4, marginBottom: 4 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendLineTerra: { width: 20, height: 2.5, backgroundColor: TERRA, borderRadius: 2 },
   legendLinePrev: {
-    width: 20, height: 2,
-    backgroundColor: '#bbb', borderRadius: 2,
+    width: 20, height: 2, backgroundColor: '#bbb', borderRadius: 2,
     borderStyle: 'dashed', borderWidth: 1, borderColor: '#bbb',
   },
   legendText: { fontSize: 11, color: TEXT_MUTED },
 
-  scoreRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-    justifyContent: 'center',
-  },
-  scoreChip: {
-    backgroundColor: GOAL_BG,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    alignItems: 'center',
-  },
-  scoreChipUnrated: { backgroundColor: BG },
-  scoreChipLabel: { fontSize: 11, fontWeight: '600', color: TERRA, marginBottom: 1 },
-  scoreChipLabelMuted: { color: TEXT_MUTED },
-  scoreChipVal: { fontSize: 15, fontWeight: '800', color: TERRA },
-  scoreChipValMuted: { color: TEXT_MUTED },
-
-  // ── Score list (new format: 기술명 · 향상 +1 · 현재 N점) ──
   scoreList: { marginTop: 10, gap: 0 },
   scoreListRow: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderBottomWidth: 1, borderBottomColor: DIVIDER,
   },
   scoreListSkill: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
   scoreListRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   scoreListBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
   scoreListBadgeText: { fontSize: 11, fontWeight: '700' },
-  scoreListVal: { fontSize: 13, fontWeight: '700', color: TERRA },
+  scoreListVal: { fontSize: 13, fontWeight: '700', color: TERRA, textAlign: 'right' },
+  scoreListHint: { fontSize: 10, color: TEXT_MUTED, textAlign: 'right', marginTop: 1 },
+
+  unratedHint: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginTop: 2 },
+  unratedHintText: { fontSize: 12, color: TEXT_MUTED },
 
   guideRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: DIVIDER,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 14, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: DIVIDER,
   },
   guideText: { fontSize: 12, color: TEXT_MUTED },
 
-  changeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 8,
-  },
+  changeCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  seeAllText: { fontSize: 12, color: TERRA, fontWeight: '600' },
+  changeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 8 },
   changeRowBorder: { borderBottomWidth: 1, borderBottomColor: DIVIDER },
   changeMain: { flex: 1, gap: 4 },
-  changeTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  changeSkill: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
-  changeBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
+  changeTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  changeDate: { fontSize: 12, color: TEXT_MUTED, fontWeight: '500', minWidth: 32 },
+  changeSkill: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY, flex: 1 },
+  changeBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
   changeBadgeText: { fontSize: 11, fontWeight: '700' },
   changeReason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 18 },
-  motivationText: { fontSize: 12, color: TEXT_MUTED, fontStyle: 'italic', marginTop: 2 },
+  motivationText: { fontSize: 12, color: TEXT_MUTED, fontStyle: 'italic' },
 
-  nextGoalBox: {
-    backgroundColor: GOAL_BG,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 12,
-    gap: 6,
-  },
+  nextGoalBox: { backgroundColor: GOAL_BG, borderRadius: 12, padding: 14, marginTop: 12, gap: 6 },
   nextGoalHeader: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   nextGoalTitle: { fontSize: 12, fontWeight: '700', color: TERRA },
   nextGoalText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 21 },
+
+  insightCard: {
+    backgroundColor: GOAL_BG,
+    borderRadius: 20,
+    padding: 20,
+    gap: 0,
+  },
+  insightTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 12 },
+  insightSection: { marginBottom: 14 },
+  insightSectionHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
+  insightSectionLabel: { fontSize: 13, fontWeight: '600', color: TERRA },
+  insightText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 21, marginBottom: 2 },
 });
 
 const tip = StyleSheet.create({
-  backdrop: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 10,
-  },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 },
   bubble: {
-    position: 'absolute',
-    top: 48,
-    right: 16,
-    backgroundColor: TEXT_PRIMARY,
-    borderRadius: 12,
-    padding: 14,
-    maxWidth: 240,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 8,
-    zIndex: 20,
+    position: 'absolute', top: 56, right: 0,
+    backgroundColor: TEXT_PRIMARY, borderRadius: 12, padding: 14,
+    maxWidth: 260,
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 8, zIndex: 20,
   },
-  text: { fontSize: 12, color: '#fff', lineHeight: 19 },
+  text: { fontSize: 11, color: '#fff', lineHeight: 18 },
   arrow: {
-    position: 'absolute',
-    top: -6,
-    right: 36,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderBottomWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
+    position: 'absolute', top: -6, right: 36,
+    width: 0, height: 0,
+    borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 6,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent',
     borderBottomColor: TEXT_PRIMARY,
   },
 });

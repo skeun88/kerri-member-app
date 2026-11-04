@@ -34,6 +34,9 @@ export interface GrowthReport {
   created_at: string;
   lesson_comparison: LessonComparison[] | null;
   next_goals_raw: string[] | string | null;
+  achievements?: string[] | null;
+  improvement_points_raw?: string[] | string | null;
+  summary?: string | null;
 }
 
 function getGrade(total: number): GradeLevel {
