@@ -172,14 +172,11 @@ function HexRadarChart({
   const currentPath = dataPath(displayCurrent);
   const prevPath = hasPrevious ? dataPath(displayPrev) : '';
 
-  // Grid label position: on the top-right diagonal axis (between idx 0 and idx 1)
-  const gridLabelAngle = skillAngle(0) + Math.PI / 12; // slightly right of top axis
-  const glx = (val: number) => CX + (val / 10) * R * Math.cos(gridLabelAngle) + 3;
-  const gly = (val: number) => CY + (val / 10) * R * Math.sin(gridLabelAngle);
+  const allRated = skillScores.every(s => s.rated);
 
   return (
     <Svg width={SVG_W} height={SVG_H}>
-      {/* Grid hexagons — 5 and 10 slightly thicker */}
+      {/* Grid hexagons */}
       {[2, 4, 6, 8].map(val => (
         <Path key={val} d={hexPath((val / 10) * R)} fill="none" stroke={GRID_COLOR} strokeWidth={1} />
       ))}
@@ -193,19 +190,28 @@ function HexRadarChart({
         );
       })}
 
-      {/* Grid value labels (5 and 10 only, on diagonal to avoid overlap) */}
-      <SvgText x={glx(5)} y={gly(5) + 3} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>5</SvgText>
-      <SvgText x={glx(10)} y={gly(10) + 3} textAnchor="start" fontSize={8} fill={TEXT_MUTED}>10</SvgText>
-
-      {/* Previous polygon (gray dashed) */}
-      {prevPath ? (
+      {/* Previous polygon (gray dashed) — only when all axes rated */}
+      {prevPath && allRated ? (
         <Path d={prevPath} fill={TERRA_PREV} stroke="#bbb" strokeWidth={1.5} strokeDasharray="4,3" />
       ) : null}
 
-      {/* Current polygon (terra) */}
-      {currentPath ? (
-        <Path d={currentPath} fill={TERRA_FILL} stroke={TERRA} strokeWidth={2.5} />
-      ) : null}
+      {allRated ? (
+        /* Filled closed polygon when all 6 skills rated */
+        currentPath ? (
+          <Path d={currentPath} fill={TERRA_FILL} stroke={TERRA} strokeWidth={2.5} />
+        ) : null
+      ) : (
+        /* Lines from center to each rated skill when partial */
+        <>
+          {skillScores.map((s, i) => {
+            if (displayCurrent[i] === null) return null;
+            const pt = getPoint(i, displayCurrent[i]!);
+            return (
+              <Line key={i} x1={CX} y1={CY} x2={pt.x} y2={pt.y} stroke={TERRA} strokeWidth={2} />
+            );
+          })}
+        </>
+      )}
 
       {/* Current vertex dots */}
       {skillScores.map((s, i) => {
@@ -345,103 +351,64 @@ export function GrowthBalanceCard({
   }, [latestPlanId]);
 
   const ratedCount = skillScores.filter(s => s.rated).length;
-  const ratedSkills = skillScores.filter(s => s.rated);
-  const unratedCount = 6 - ratedCount;
   const hasPrevious = skillScores.some(s => s.previous !== null);
+  const allRated = ratedCount === 6;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.cardTitle}>나의 성장 밸런스</Text>
-        <TouchableOpacity
-          style={styles.infoBtn}
-          onPress={() => setShowInfo(v => !v)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="information-circle-outline" size={18} color={TEXT_MUTED} />
-          <Text style={styles.infoBtnText}>점수 안내</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          {ratedCount > 0 && (
+            <Text style={styles.progressSmall}>{ratedCount}/6 기술 기록 완료</Text>
+          )}
+          <TouchableOpacity
+            style={styles.infoBtn}
+            onPress={() => setShowInfo(v => !v)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="information-circle-outline" size={18} color={TEXT_MUTED} />
+            <Text style={styles.infoBtnText}>점수 안내</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScoreInfoTooltip visible={showInfo} onClose={() => setShowInfo(false)} />
 
-      {ratedCount === 0 ? (
-        /* ── 아직 기록 없음 ── */
-        <View style={styles.emptyChart}>
-          <Ionicons name="stats-chart-outline" size={36} color={DIVIDER} />
-          <Text style={styles.emptyChartText}>
-            첫 레슨 기록을 받으면{'\n'}나의 성장 그래프가 시작돼요
-          </Text>
+      <HexRadarChart skillScores={skillScores} animPhase={animPhase} hasPrevious={hasPrevious} />
+
+      {/* Legend — only when all rated and previous data exists */}
+      {hasPrevious && allRated && (
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View style={styles.legendLineTerra} />
+            <Text style={styles.legendText}>현재</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={styles.legendLinePrev} />
+            <Text style={styles.legendText}>이전</Text>
+          </View>
         </View>
-      ) : ratedCount < 3 ? (
-        /* ── 초기 단계 (1~2개 기술) — 차트 미표시 ── */
-        <View style={styles.earlyStage}>
-          <View style={styles.progressLabelRow}>
-            <Text style={styles.progressLabel}>{ratedCount}/6 기술 기록 완료</Text>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${(ratedCount / 6) * 100}%` as any }]} />
-          </View>
-          <Text style={styles.progressHint}>3개 기술 기록이 쌓이면 성장 밸런스가 완성돼요</Text>
-
-          {ratedSkills.map(s => (
-            <View key={s.skill} style={styles.earlySkillCard}>
-              <View style={styles.earlySkillLeft}>
-                <Text style={styles.earlySkillName}>{s.skill}</Text>
-                {s.status ? (
-                  <Text style={styles.earlySkillStatus}>{getStatusMsg(s.status)}</Text>
-                ) : null}
-              </View>
-              <Text style={styles.earlySkillScore}>현재 {s.current}점</Text>
-            </View>
-          ))}
-
-          {unratedCount > 0 && (
-            <View style={styles.unratedHint}>
-              <Ionicons name="ellipsis-horizontal-circle-outline" size={15} color={TEXT_MUTED} />
-              <Text style={styles.unratedHintText}>아직 기록되지 않은 기술 {unratedCount}개</Text>
-            </View>
-          )}
-        </View>
-      ) : (
-        /* ── 차트 표시 (3개 이상) ── */
-        <>
-          <HexRadarChart skillScores={skillScores} animPhase={animPhase} hasPrevious={hasPrevious} />
-
-          {/* Legend — only when previous data exists */}
-          {hasPrevious && (
-            <View style={styles.legendRow}>
-              <View style={styles.legendItem}>
-                <View style={styles.legendLineTerra} />
-                <Text style={styles.legendText}>현재</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={styles.legendLinePrev} />
-                <Text style={styles.legendText}>이전</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Score chips */}
-          <View style={styles.scoreRow}>
-            {skillScores.map(s => (
-              <View key={s.skill} style={[styles.scoreChip, !s.rated && styles.scoreChipUnrated]}>
-                <Text style={[styles.scoreChipLabel, !s.rated && styles.scoreChipLabelMuted]}>
-                  {s.skill}
-                </Text>
-                {s.rated ? (
-                  <Text style={styles.scoreChipVal}>
-                    {s.current}
-                    {s.delta > 0 ? ' ↑' : s.delta < 0 ? ' ↓' : ''}
-                  </Text>
-                ) : (
-                  <Text style={styles.scoreChipValMuted}>—</Text>
-                )}
-              </View>
-            ))}
-          </View>
-        </>
       )}
+
+      {/* Score chips */}
+      <View style={styles.scoreRow}>
+        {skillScores.map(s => (
+          <View key={s.skill} style={[styles.scoreChip, !s.rated && styles.scoreChipUnrated]}>
+            <Text style={[styles.scoreChipLabel, !s.rated && styles.scoreChipLabelMuted]}>
+              {s.skill}
+            </Text>
+            {s.rated ? (
+              <Text style={styles.scoreChipVal}>
+                {s.current}
+                {s.delta > 0 ? ' ↑' : s.delta < 0 ? ' ↓' : ''}
+              </Text>
+            ) : (
+              <Text style={styles.scoreChipValMuted}>—</Text>
+            )}
+          </View>
+        ))}
+      </View>
 
       <View style={styles.guideRow}>
         <Ionicons name="leaf-outline" size={13} color={TEXT_MUTED} />
@@ -568,6 +535,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  progressSmall: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: TEXT_MUTED,
+  },
   infoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
