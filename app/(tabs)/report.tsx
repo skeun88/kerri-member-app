@@ -43,6 +43,16 @@ interface CoachReport {
   credit_unlocked: boolean;
 }
 
+// ── Section header with icon ───────────────────────────────────
+function SectionHead({ icon, title }: { icon: string; title: string }) {
+  return (
+    <View style={styles.sectionHead}>
+      <Ionicons name={icon as any} size={14} color={TERRA} />
+      <Text style={styles.sectionTitle}>{title}</Text>
+    </View>
+  );
+}
+
 // ── Charge modal ───────────────────────────────────────────────
 function ChargeModal({
   visible, creditInfo, onClose,
@@ -88,6 +98,7 @@ export default function ReportScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [pendingUnlockId, setPendingUnlockId] = useState<string | null>(null);
@@ -200,6 +211,15 @@ export default function ReportScreen() {
     }
   }
 
+  function toggleSummary(planId: string) {
+    setExpandedSummaries(prev => {
+      const next = new Set(prev);
+      if (next.has(planId)) next.delete(planId);
+      else next.add(planId);
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (!charged) return;
     const newBalance = parseInt(charged, 10);
@@ -276,6 +296,7 @@ export default function ReportScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -288,16 +309,21 @@ export default function ReportScreen() {
           <View style={styles.emptyBox}>
             <Ionicons name="document-text-outline" size={52} color={DIVIDER} />
             <Text style={styles.emptyTitle}>아직 공유된 레슨 기록이 없어요</Text>
-            <Text style={styles.emptySub}>코치가 레슨을 분석하면{'\n'}여기에 기록이 자동으로 도착해요 🎾</Text>
+            <Text style={styles.emptySub}>코치가 레슨을 분석하면{'\n'}여기에 기록이 자동으로 도착해요</Text>
           </View>
         ) : (
           <View style={styles.list}>
             {reports.map((report) => {
               const isUnlocked = IS_BETA || report.credit_unlocked;
               const isExpanded = expandedId === report.plan_id;
+              const isSummaryExpanded = expandedSummaries.has(report.plan_id);
               const achievements = report.achievements ?? [];
               const improvements = toLines(report.improvement_points_raw);
               const nextGoals = toLines(report.next_goals_raw);
+              const cardTitle = report.session_goals || formatDate(report.created_at);
+              const cardMeta = report.session_goals
+                ? `${formatDate(report.created_at)}${coachName ? ` · ${coachName} 코치` : ''}`
+                : coachName ? `${coachName} 코치` : null;
 
               return (
                 <TouchableOpacity
@@ -313,7 +339,7 @@ export default function ReportScreen() {
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
                       <View style={styles.metaRow}>
-                        <Text style={styles.cardDate}>{formatDate(report.created_at)}</Text>
+                        <Text style={styles.cardTitle} numberOfLines={1}>{cardTitle}</Text>
                         {!report.is_read && isUnlocked && (
                           <View style={styles.newBadge}>
                             <Text style={styles.newBadgeText}>NEW</Text>
@@ -321,14 +347,8 @@ export default function ReportScreen() {
                         )}
                       </View>
 
-                      {coachName && (
-                        <Text style={styles.coachName}>{coachName} 코치</Text>
-                      )}
-
-                      {report.session_goals ? (
-                        <View style={styles.topicChip}>
-                          <Text style={styles.topicChipText} numberOfLines={1}>{report.session_goals}</Text>
-                        </View>
+                      {cardMeta ? (
+                        <Text style={styles.cardMeta}>{cardMeta}</Text>
                       ) : null}
 
                       {!isExpanded && (
@@ -363,18 +383,36 @@ export default function ReportScreen() {
 
                       {!!report.summary && (
                         <View style={styles.section}>
-                          <Text style={styles.sectionTitle}>오늘 레슨 요약</Text>
-                          <Text style={styles.bodyText}>{report.summary}</Text>
+                          <SectionHead icon="document-text-outline" title="오늘 레슨 요약" />
+                          <Text
+                            style={styles.bodyText}
+                            numberOfLines={isSummaryExpanded ? undefined : 4}
+                          >
+                            {report.summary}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.expandBtn}
+                            onPress={(e) => { e.stopPropagation?.(); toggleSummary(report.plan_id); }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={styles.expandBtnText}>
+                              {isSummaryExpanded ? '접기' : '전체 내용 보기'}
+                            </Text>
+                            <Ionicons
+                              name={isSummaryExpanded ? 'chevron-up' : 'chevron-down'}
+                              size={12} color={TERRA}
+                            />
+                          </TouchableOpacity>
                         </View>
                       )}
 
                       {report.lesson_comparison && report.lesson_comparison.length > 0 && (
                         <View style={styles.section}>
-                          <Text style={styles.sectionTitle}>이전 레슨 대비 변화</Text>
+                          <SectionHead icon="trending-up-outline" title="이전 레슨 대비 변화" />
                           {report.lesson_comparison.slice(0, 3).map((c, i) => {
                             const isImproved = c.status === 'improved';
                             const isNeedsWork = c.status === 'needs_work' || c.status === 'regressed';
-                            const badgeLabel = isImproved ? '좋아졌어요' : isNeedsWork ? '더 연습해요' : '유지';
+                            const badgeLabel = isImproved ? '향상' : isNeedsWork ? '보완 필요' : '유지';
                             return (
                               <View key={i} style={[styles.compRow, i < report.lesson_comparison!.length - 1 && styles.compRowBorder]}>
                                 <View style={styles.compTopRow}>
@@ -392,7 +430,7 @@ export default function ReportScreen() {
 
                       {achievements.length > 0 && (
                         <View style={styles.section}>
-                          <Text style={styles.sectionTitle}>오늘 잘한 점</Text>
+                          <SectionHead icon="checkmark-circle-outline" title="오늘 잘한 점" />
                           {achievements.map((item, i) => (
                             <View key={i} style={styles.listRow}>
                               <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
@@ -404,7 +442,7 @@ export default function ReportScreen() {
 
                       {improvements.length > 0 && (
                         <View style={styles.section}>
-                          <Text style={styles.sectionTitle}>교정 포인트</Text>
+                          <SectionHead icon="construct-outline" title="교정 포인트" />
                           {improvements.map((item, i) => (
                             <View key={i} style={styles.listRow}>
                               <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
@@ -435,7 +473,6 @@ export default function ReportScreen() {
             })}
           </View>
         )}
-        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -482,6 +519,8 @@ const styles = StyleSheet.create({
   },
   freeBannerText: { fontSize: 13, color: TERRA },
 
+  scrollContent: { paddingBottom: 100 },
+
   emptyBox: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
   emptySub: { fontSize: 14, color: TEXT_MUTED, textAlign: 'center', lineHeight: 22 },
@@ -496,17 +535,11 @@ const styles = StyleSheet.create({
   cardUnread: { borderLeftWidth: 3, borderLeftColor: TERRA },
 
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  cardDate: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, flex: 1 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY, flex: 1 },
+  cardMeta: { fontSize: 12, color: TEXT_MUTED, marginBottom: 6 },
   newBadge: { backgroundColor: GOAL_BG, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
   newBadgeText: { fontSize: 10, fontWeight: '800', color: TERRA },
-  coachName: { fontSize: 13, color: TEXT_MUTED, marginBottom: 6 },
-  topicChip: {
-    alignSelf: 'flex-start', backgroundColor: BG, borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 3, marginBottom: 8,
-    borderWidth: 1, borderColor: DIVIDER,
-  },
-  topicChipText: { fontSize: 12, color: TEXT_MUTED },
   cardPreview: { fontSize: 14, color: TEXT_MUTED, lineHeight: 20, marginTop: 2 },
 
   lockBadge: {
@@ -520,11 +553,15 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: DIVIDER, marginVertical: 16 },
 
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: TEXT_MUTED, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: TERRA, letterSpacing: 0.3 },
   bodyText: { fontSize: 15, color: TEXT_PRIMARY, lineHeight: 24 },
 
+  expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, alignSelf: 'flex-start' },
+  expandBtnText: { fontSize: 13, color: TERRA, fontWeight: '600' },
+
   listRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
-  listNum: { fontSize: 12, fontWeight: '700', color: TEXT_MUTED, width: 20, marginTop: 4 },
+  listNum: { fontSize: 12, fontWeight: '700', color: TERRA, width: 20, marginTop: 4 },
   listText: { fontSize: 15, color: TEXT_PRIMARY, lineHeight: 24, flex: 1 },
 
   goalSection: {
@@ -532,7 +569,7 @@ const styles = StyleSheet.create({
     padding: 16, marginBottom: 4,
   },
   goalHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  goalTitle: { fontSize: 13, fontWeight: '700', color: TERRA, textTransform: 'uppercase', letterSpacing: 0.5 },
+  goalTitle: { fontSize: 13, fontWeight: '700', color: TERRA, letterSpacing: 0.3 },
   goalText: { fontSize: 15, color: TEXT_PRIMARY, lineHeight: 24, flex: 1 },
 
   compRow: { paddingVertical: 10 },
@@ -549,4 +586,3 @@ const styles = StyleSheet.create({
   compBadgeTextNeutral: { color: TEXT_MUTED },
   compReason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 20, marginTop: 4 },
 });
-
