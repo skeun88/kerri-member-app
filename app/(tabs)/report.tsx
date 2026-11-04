@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Modal, Alert, SafeAreaView,
@@ -380,92 +380,113 @@ export default function ReportScreen() {
                   {isExpanded && isUnlocked && (
                     <View style={styles.detail}>
                       <View style={styles.divider} />
+                      {(() => {
+                        const secs: Array<{ key: string; node: React.ReactNode }> = [];
 
-                      {!!report.summary && (
-                        <View style={styles.section}>
-                          <SectionHead icon="document-text-outline" title="오늘 레슨 요약" />
-                          <Text
-                            style={styles.bodyText}
-                            numberOfLines={isSummaryExpanded ? undefined : 4}
-                          >
-                            {report.summary}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.expandBtn}
-                            onPress={(e) => { e.stopPropagation?.(); toggleSummary(report.plan_id); }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Text style={styles.expandBtnText}>
-                              {isSummaryExpanded ? '접기' : '전체 내용 보기'}
-                            </Text>
-                            <Ionicons
-                              name={isSummaryExpanded ? 'chevron-up' : 'chevron-down'}
-                              size={12} color={TERRA}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                        if (!!report.summary) {
+                          secs.push({ key: 'summary', node: (
+                            <View style={styles.section}>
+                              <SectionHead icon="document-text-outline" title="오늘 레슨 요약" />
+                              <Text
+                                style={styles.bodyText}
+                                numberOfLines={isSummaryExpanded ? undefined : 4}
+                              >
+                                {report.summary}
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.expandBtn}
+                                onPress={(e) => { e.stopPropagation?.(); toggleSummary(report.plan_id); }}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={styles.expandBtnText}>
+                                  {isSummaryExpanded ? '접기' : '전체 내용 보기'}
+                                </Text>
+                                <Ionicons
+                                  name={isSummaryExpanded ? 'chevron-up' : 'chevron-down'}
+                                  size={12} color={TERRA}
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          ) });
+                        }
 
-                      {report.lesson_comparison && report.lesson_comparison.length > 0 && (
-                        <View style={styles.section}>
-                          <SectionHead icon="trending-up-outline" title="이전 레슨 대비 변화" />
-                          {report.lesson_comparison.slice(0, 3).map((c, i) => {
-                            const isImproved = c.status === 'improved';
-                            const isNeedsWork = c.status === 'needs_work' || c.status === 'regressed';
-                            const badgeLabel = isImproved ? '향상' : isNeedsWork ? '보완 필요' : '유지';
-                            return (
-                              <View key={i} style={[styles.compRow, i < report.lesson_comparison!.length - 1 && styles.compRowBorder]}>
-                                <View style={styles.compTopRow}>
-                                  <Text style={styles.compPoint}>{c.point}</Text>
-                                  <View style={[styles.compBadge, isImproved ? styles.compBadgeImproved : isNeedsWork ? styles.compBadgeNeeds : styles.compBadgeNeutral]}>
-                                    <Text style={[styles.compBadgeText, isImproved ? styles.compBadgeTextImproved : isNeedsWork ? styles.compBadgeTextNeeds : styles.compBadgeTextNeutral]}>{badgeLabel}</Text>
+                        if (report.lesson_comparison && report.lesson_comparison.length > 0) {
+                          secs.push({ key: 'comparison', node: (
+                            <View style={styles.section}>
+                              <SectionHead icon="trending-up-outline" title="이전 레슨 대비 변화" />
+                              {report.lesson_comparison.slice(0, 3).map((c, i) => {
+                                const isImproved = c.status === 'improved';
+                                const isNeedsWork = c.status === 'needs_work' || c.status === 'regressed';
+                                const badgeLabel = isImproved ? '향상' : isNeedsWork ? '보완 필요' : '유지';
+                                return (
+                                  <View key={i} style={[styles.compRow, i < report.lesson_comparison!.length - 1 && styles.compRowBorder]}>
+                                    <View style={styles.compTopRow}>
+                                      <Text style={styles.compPoint}>{c.point}</Text>
+                                      <View style={[styles.compBadge, isImproved ? styles.compBadgeImproved : isNeedsWork ? styles.compBadgeNeeds : styles.compBadgeNeutral]}>
+                                        <Text style={[styles.compBadgeText, isImproved ? styles.compBadgeTextImproved : isNeedsWork ? styles.compBadgeTextNeeds : styles.compBadgeTextNeutral]}>{badgeLabel}</Text>
+                                      </View>
+                                    </View>
+                                    {!!c.reason && <Text style={styles.compReason}>{c.reason}</Text>}
                                   </View>
+                                );
+                              })}
+                            </View>
+                          ) });
+                        }
+
+                        if (achievements.length > 0) {
+                          secs.push({ key: 'achievements', node: (
+                            <View style={styles.section}>
+                              <SectionHead icon="checkmark-circle-outline" title="오늘 잘한 점" />
+                              {achievements.map((item, i) => (
+                                <View key={i} style={styles.listRow}>
+                                  <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                                  <Text style={styles.listText}>{item}</Text>
                                 </View>
-                                {!!c.reason && <Text style={styles.compReason}>{c.reason}</Text>}
+                              ))}
+                            </View>
+                          ) });
+                        }
+
+                        if (improvements.length > 0) {
+                          secs.push({ key: 'improvements', node: (
+                            <View style={styles.section}>
+                              <SectionHead icon="construct-outline" title="교정 포인트" />
+                              {improvements.map((item, i) => (
+                                <View key={i} style={styles.listRow}>
+                                  <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                                  <Text style={styles.listText}>{item}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) });
+                        }
+
+                        return (
+                          <>
+                            {secs.map(({ key, node }, i) => (
+                              <React.Fragment key={key}>
+                                {i > 0 && <View style={styles.sectionDivider} />}
+                                {node}
+                              </React.Fragment>
+                            ))}
+                            {nextGoals.length > 0 && (
+                              <View style={[styles.goalSection, secs.length > 0 && { marginTop: 20 }]}>
+                                <View style={styles.goalHeader}>
+                                  <Ionicons name="locate-outline" size={14} color={TERRA} />
+                                  <Text style={styles.goalTitle}>다음 레슨 목표</Text>
+                                </View>
+                                {nextGoals.map((item, i) => (
+                                  <View key={i} style={styles.listRow}>
+                                    <Text style={[styles.listNum, { color: TERRA }]}>{String(i + 1).padStart(2, '0')}</Text>
+                                    <Text style={styles.goalText}>{item}</Text>
+                                  </View>
+                                ))}
                               </View>
-                            );
-                          })}
-                        </View>
-                      )}
-
-                      {achievements.length > 0 && (
-                        <View style={styles.section}>
-                          <SectionHead icon="checkmark-circle-outline" title="오늘 잘한 점" />
-                          {achievements.map((item, i) => (
-                            <View key={i} style={styles.listRow}>
-                              <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
-                              <Text style={styles.listText}>{item}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {improvements.length > 0 && (
-                        <View style={styles.section}>
-                          <SectionHead icon="construct-outline" title="교정 포인트" />
-                          {improvements.map((item, i) => (
-                            <View key={i} style={styles.listRow}>
-                              <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
-                              <Text style={styles.listText}>{item}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {nextGoals.length > 0 && (
-                        <View style={styles.goalSection}>
-                          <View style={styles.goalHeader}>
-                            <Ionicons name="locate-outline" size={14} color={TERRA} />
-                            <Text style={styles.goalTitle}>다음 레슨 목표</Text>
-                          </View>
-                          {nextGoals.map((item, i) => (
-                            <View key={i} style={styles.listRow}>
-                              <Text style={[styles.listNum, { color: TERRA }]}>{String(i + 1).padStart(2, '0')}</Text>
-                              <Text style={styles.goalText}>{item}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
+                            )}
+                          </>
+                        );
+                      })()}
                     </View>
                   )}
                 </TouchableOpacity>
@@ -551,8 +572,9 @@ const styles = StyleSheet.create({
 
   detail: { marginTop: 4 },
   divider: { height: 1, backgroundColor: DIVIDER, marginVertical: 16 },
+  sectionDivider: { height: 1, backgroundColor: '#E9ECF1', marginVertical: 24 },
 
-  section: { marginBottom: 20 },
+  section: { marginBottom: 0 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   sectionTitle: { fontSize: 13, fontWeight: '600', color: TERRA, letterSpacing: 0.3 },
   bodyText: { fontSize: 15, color: TEXT_PRIMARY, lineHeight: 24 },
