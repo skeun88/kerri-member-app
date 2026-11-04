@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, Modal, ActivityIndicator, TextInput,
-  SafeAreaView,
+  SafeAreaView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -370,7 +370,8 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
       )}
 
       <Modal visible={bookingModal} transparent animationType="slide" onRequestClose={() => setBookingModal(false)}>
-        <View style={s.modalOverlay}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={s.modalOverlay}>
           <View style={s.modalSheet}>
             <View style={s.modalHandle} />
             <Text style={s.modalTitle}>보강 신청</Text>
@@ -396,7 +397,8 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
