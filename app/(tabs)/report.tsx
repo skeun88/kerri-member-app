@@ -137,12 +137,15 @@ export default function ReportScreen() {
     }
 
     // Build report map: lesson_plan_id → {seq, coachId, ...}
+    // seq counts only plan-linked reports; old-format reports (no lesson_plan_id) are excluded from the counter
     type SentInfo = { seq: number; coachId: string | null; reportId: string; isRead: boolean; creditUnlocked: boolean };
     const sentMap = new Map<string, SentInfo>();
-    (allSentReports ?? []).forEach((r: any, idx: number) => {
+    let planSeq = 0;
+    (allSentReports ?? []).forEach((r: any) => {
       if (r.lesson_plan_id) {
+        planSeq++;
         sentMap.set(r.lesson_plan_id, {
-          seq: idx + 1,
+          seq: planSeq,
           coachId: r.coach_id ?? null,
           reportId: r.id,
           isRead: r.is_read ?? false,
