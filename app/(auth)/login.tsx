@@ -102,7 +102,7 @@ export default function LoginScreen() {
 
       registerMemberPushToken().catch(() => {});
 
-      if (!member || member.birth_date) {
+      if (member?.onboarding_completed) {
         console.log('[LOGIN] → /(tabs) 이동');
         router.replace('/(tabs)');
       } else {
