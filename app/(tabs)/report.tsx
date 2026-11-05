@@ -41,6 +41,8 @@ interface CoachReport {
   report_id: string | null;
   is_read: boolean;
   credit_unlocked: boolean;
+  sequence: number | null;
+  coach_name: string | null;
 }
 
 // ── Section header with icon ───────────────────────────────────
@@ -109,49 +111,65 @@ export default function ReportScreen() {
     if (!member) { setLoading(false); return; }
     setMemberIdForRt(member.id);
 
-    const [{ data: planData }, coachRes] = await Promise.all([
+    const [{ data: planData }, { data: allSentReports }, credit] = await Promise.all([
       supabase
         .from('member_lesson_plan_view')
         .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, duration_minutes, lesson_comparison')
         .eq('member_id', member.id)
         .order('created_at', { ascending: false })
         .limit(30),
+      // Fetch ALL sent reports oldest-first to compute stable sequence numbers
       supabase
-        .from('coach_profiles')
-        .select('display_name')
-        .eq('coach_id', member.coach_id)
-        .maybeSingle(),
+        .from('member_lesson_reports')
+        .select('id, lesson_plan_id, is_read, credit_unlocked, coach_id, created_at')
+        .eq('member_id', member.id)
+        .eq('sent_to_member', true)
+        .order('created_at', { ascending: true }),
+      getMyCreditInfo(),
     ]);
 
-    setCoachName(coachRes.data?.display_name ?? null);
+    setCreditInfo(credit);
 
     if (!planData || planData.length === 0) {
       setReports([]);
-      const credit = await getMyCreditInfo();
-      setCreditInfo(credit);
       setLoading(false);
       return;
     }
 
-    const planIds = planData.map(p => p.id);
+    // Build report map: lesson_plan_id → {seq, coachId, ...}
+    type SentInfo = { seq: number; coachId: string | null; reportId: string; isRead: boolean; creditUnlocked: boolean };
+    const sentMap = new Map<string, SentInfo>();
+    (allSentReports ?? []).forEach((r: any, idx: number) => {
+      if (r.lesson_plan_id) {
+        sentMap.set(r.lesson_plan_id, {
+          seq: idx + 1,
+          coachId: r.coach_id ?? null,
+          reportId: r.id,
+          isRead: r.is_read ?? false,
+          creditUnlocked: r.credit_unlocked ?? false,
+        });
+      }
+    });
 
-    const [{ data: reportData }, credit] = await Promise.all([
-      supabase
-        .from('member_lesson_reports')
-        .select('id, lesson_plan_id, is_read, credit_unlocked, sent_to_member')
-        .in('lesson_plan_id', planIds)
-        .eq('sent_to_member', true),
-      getMyCreditInfo(),
-    ]);
-
-    const reportMap = new Map(
-      (reportData ?? []).map(r => [r.lesson_plan_id, r])
-    );
+    // Fetch coach display names for all unique coach_ids in one query
+    const coachIds = [...new Set((allSentReports ?? []).map((r: any) => r.coach_id).filter(Boolean))] as string[];
+    const coachNameMap = new Map<string, string>();
+    if (coachIds.length > 0) {
+      const { data: coachData } = await supabase
+        .from('coach_profiles')
+        .select('coach_id, display_name')
+        .in('coach_id', coachIds);
+      (coachData ?? []).forEach((c: any) => {
+        if (c.coach_id && c.display_name) coachNameMap.set(c.coach_id, c.display_name);
+      });
+    }
+    // Keep current-coach name for fallback header display
+    setCoachName(coachIds.length > 0 ? (coachNameMap.get(coachIds[coachIds.length - 1]) ?? null) : null);
 
     const merged: CoachReport[] = planData
-      .filter(plan => reportMap.has(plan.id))
-      .map(plan => {
-        const report = reportMap.get(plan.id);
+      .filter((plan: any) => sentMap.has(plan.id))
+      .map((plan: any) => {
+        const info = sentMap.get(plan.id)!;
         return {
           plan_id: plan.id,
           member_id: plan.member_id,
@@ -164,14 +182,15 @@ export default function ReportScreen() {
           session_goals: plan.session_goals ?? null,
           duration_minutes: plan.duration_minutes ?? null,
           lesson_comparison: Array.isArray(plan.lesson_comparison) ? plan.lesson_comparison : null,
-          report_id: report?.id ?? null,
-          is_read: report?.is_read ?? false,
-          credit_unlocked: report?.credit_unlocked ?? false,
+          report_id: info.reportId,
+          is_read: info.isRead,
+          credit_unlocked: info.creditUnlocked,
+          sequence: info.seq,
+          coach_name: info.coachId ? (coachNameMap.get(info.coachId) ?? null) : null,
         };
       });
 
     setReports(merged);
-    setCreditInfo(credit);
     setLoading(false);
   }
 
@@ -322,9 +341,6 @@ export default function ReportScreen() {
               const improvements = toLines(report.improvement_points_raw);
               const nextGoals = toLines(report.next_goals_raw);
               const cardTitle = report.session_goals || formatDate(report.created_at);
-              const cardMeta = report.session_goals
-                ? `${formatDate(report.created_at)}${coachName ? ` · ${coachName} 코치` : ''}`
-                : coachName ? `${coachName} 코치` : null;
 
               return (
                 <TouchableOpacity
@@ -339,6 +355,7 @@ export default function ReportScreen() {
                 >
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
+                      {/* Title + NEW badge */}
                       <View style={styles.metaRow}>
                         <Text style={styles.cardTitle} numberOfLines={1}>{cardTitle}</Text>
                         {!report.is_read && isUnlocked && (
@@ -348,16 +365,30 @@ export default function ReportScreen() {
                         )}
                       </View>
 
-                      {cardMeta ? (
-                        <Text style={styles.cardMeta}>{cardMeta}</Text>
-                      ) : null}
+                      {/* Date · 순번 · 코치명 */}
+                      <Text style={styles.cardMeta} numberOfLines={2}>
+                        <Text style={styles.cardMetaMuted}>{formatDate(report.created_at)}</Text>
+                        {report.sequence != null && (
+                          <Text>
+                            <Text style={styles.cardMetaMuted}> · </Text>
+                            <Text style={styles.cardMetaTerra}>{report.sequence}번째 기록</Text>
+                          </Text>
+                        )}
+                        {report.coach_name ? (
+                          <Text style={styles.cardMetaMuted}> · {report.coach_name} 코치</Text>
+                        ) : null}
+                      </Text>
 
+                      {/* Divider + preview (collapsed only) */}
                       {!isExpanded && (
-                        <Text style={styles.cardPreview} numberOfLines={2}>
-                          {isUnlocked
-                            ? (report.summary || '')
-                            : '레슨 기록을 열어보려면 탭하세요'}
-                        </Text>
+                        <>
+                          <View style={styles.cardMetaDivider} />
+                          <Text style={styles.cardPreview} numberOfLines={2}>
+                            {isUnlocked
+                              ? (report.summary || '')
+                              : '레슨 기록을 열어보려면 탭하세요'}
+                          </Text>
+                        </>
                       )}
                     </View>
 
@@ -558,12 +589,15 @@ const styles = StyleSheet.create({
   cardUnread: { borderLeftWidth: 3, borderLeftColor: TERRA },
 
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY, flex: 1 },
-  cardMeta: { fontSize: 12, color: TEXT_MUTED, marginBottom: 6 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flex: 1 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: TEXT_PRIMARY, flex: 1 },
+  cardMeta: { fontSize: 12, marginBottom: 0, flexWrap: 'wrap' },
+  cardMetaMuted: { fontSize: 12, color: TEXT_MUTED },
+  cardMetaTerra: { fontSize: 12, color: TERRA, fontWeight: '600' },
+  cardMetaDivider: { height: 1, backgroundColor: '#E9ECF1', marginTop: 12, marginBottom: 12 },
   newBadge: { backgroundColor: GOAL_BG, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
   newBadgeText: { fontSize: 10, fontWeight: '800', color: TERRA },
-  cardPreview: { fontSize: 14, color: TEXT_MUTED, lineHeight: 20, marginTop: 2 },
+  cardPreview: { fontSize: 14, color: TEXT_MUTED, lineHeight: 20 },
 
   lockBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
