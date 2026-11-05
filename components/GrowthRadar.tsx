@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, ScrollView } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -158,6 +158,68 @@ export function computeChangeEvents(reports: GrowthReport[]): SkillChangeEvent[]
   return events.reverse();
 }
 
+// ── Detailed change types ──────────────────────────────────────
+export interface LessonEvalItem {
+  point: string;
+  status: string;
+  reason: string | null;
+  isPending: boolean;
+}
+
+export interface LessonSkillChange {
+  skill: SkillName;
+  status: string;
+  delta: number;
+  scoreBefore: number;
+  scoreAfter: number;
+  evaluationItems: LessonEvalItem[];
+}
+
+export interface LessonChangeGroup {
+  date: string;
+  lessonId: string | null;
+  planId: string;
+  skillChanges: LessonSkillChange[];
+}
+
+export function computeLessonChangeGroups(reports: GrowthReport[]): LessonChangeGroup[] {
+  const groups: LessonChangeGroup[] = [];
+  const oldest = [...reports].reverse();
+  const running: Partial<Record<SkillName, number>> = {};
+  const knownStatuses = ['improved', 'same', 'maintained', 'needs_work', 'regressed'];
+
+  for (const r of oldest) {
+    if (!r.lesson_comparison) continue;
+
+    const bySkill = new Map<SkillName, LessonEvalItem[]>();
+    for (const c of r.lesson_comparison) {
+      const skill = detectSkill(c as any);
+      if (!skill) continue;
+      const isPending = !knownStatuses.includes(c.status);
+      if (!bySkill.has(skill)) bySkill.set(skill, []);
+      bySkill.get(skill)!.push({ point: c.point, status: c.status, reason: c.reason ?? null, isPending });
+    }
+
+    const skillChanges: LessonSkillChange[] = [];
+    for (const [skill, items] of bySkill) {
+      const scoreBefore = running[skill] ?? BASE_SCORE;
+      const primary = items.find(item => !item.isPending);
+      let delta = 0;
+      const status = primary?.status ?? 'pending';
+      if (primary) delta = getDelta(scoreBefore, primary.status);
+      const scoreAfter = Math.max(0, Math.min(100, scoreBefore + delta));
+      running[skill] = scoreAfter;
+      skillChanges.push({ skill, status, delta, scoreBefore, scoreAfter, evaluationItems: items });
+    }
+
+    if (skillChanges.length > 0) {
+      groups.push({ date: r.created_at, lessonId: r.lesson_id ?? null, planId: r.plan_id, skillChanges });
+    }
+  }
+
+  return groups.reverse();
+}
+
 // ── SVG helpers ────────────────────────────────────────────────
 function skillAngle(i: number) { return -Math.PI / 2 + i * (Math.PI / 3); }
 
@@ -230,19 +292,7 @@ function HexRadarChart({
       {/* Current polygon */}
       <Path d={currentPath} fill={TERRA_FILL} stroke={TERRA} strokeWidth={2.5} />
 
-      {/* Dots only for rated skills */}
-      {skillScores.map((s, i) => {
-        if (!s.rated) return null;
-        const pt = getPoint(i, displayCurrent[i]);
-        return (
-          <G key={i}>
-            <Circle cx={pt.x} cy={pt.y} r={8} fill="rgba(192,117,90,0.15)" />
-            <Circle cx={pt.x} cy={pt.y} r={4.5} fill={TERRA} />
-          </G>
-        );
-      })}
-
-      {/* Skill labels */}
+      {/* Skill labels with score */}
       {SKILLS.map((name, i) => {
         const a = skillAngle(i);
         const lx = CX + LABEL_R * Math.cos(a);
@@ -250,25 +300,21 @@ function HexRadarChart({
         const isRated = skillScores[i].rated;
         const align = i === 0 || i === 3 ? 'middle' : i === 1 || i === 2 ? 'start' : 'end';
         const baseY = i === 0 ? ly - 8 : i === 3 ? ly + 8 : ly + 2;
-        const delta = skillScores[i].delta;
+        const displayScore = skillScores[i].current ?? BASE_SCORE;
 
         return (
           <G key={i} onPress={() => onSkillPress?.(i)}>
-            <Circle cx={lx} cy={baseY - 2} r={22} fill="transparent" />
+            <Circle cx={lx} cy={baseY + 4} r={24} fill="transparent" />
             <SvgText x={lx} y={baseY} textAnchor={align} fontSize={11} fontWeight="600"
               fill={isRated ? TEXT_PRIMARY : TEXT_MUTED}>
               {name}
             </SvgText>
-            {!isRated && (
-              <SvgText x={lx} y={baseY + 13} textAnchor={align} fontSize={9} fill={TEXT_MUTED}>기본 20</SvgText>
-            )}
-            {isRated && delta > 0 && animPhase > 0.85 && (
-              <SvgText
-                x={i === 1 || i === 2 ? lx + 24 : i === 4 || i === 5 ? lx - 24 : lx}
-                y={baseY - 10} textAnchor="middle" fontSize={10} fontWeight="700" fill={TERRA}
-              >
-                +{delta % 1 === 0 ? delta : delta.toFixed(1)}
+            {isRated ? (
+              <SvgText x={lx} y={baseY + 13} textAnchor={align} fontSize={9} fontWeight="600" fill={TERRA}>
+                {displayScore}점
               </SvgText>
+            ) : (
+              <SvgText x={lx} y={baseY + 13} textAnchor={align} fontSize={9} fill={TEXT_MUTED}>기본 20</SvgText>
             )}
           </G>
         );
@@ -410,6 +456,132 @@ function SkillDetailSheet({
               <Text style={sheet.lessonBtnText}>레슨 기록에서 확인하기</Text>
             </TouchableOpacity>
           )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ── Detail helpers ─────────────────────────────────────────────
+function formatGroupDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+function getDetailStatusStyle(status: string, delta: number): { label: string; bg: string; text: string } {
+  if (status === 'pending') return { label: '미반영', bg: '#F4F6F9', text: TEXT_MUTED };
+  if (status === 'improved') {
+    const abs = Math.abs(delta);
+    return { label: `향상 +${abs % 1 === 0 ? abs : abs.toFixed(1)}`, bg: '#ECFDF5', text: '#059669' };
+  }
+  if (status === 'needs_work' || status === 'regressed') return { label: '보완 필요', bg: GOAL_BG, text: TERRA };
+  return { label: '유지', bg: '#F4F6F9', text: TEXT_MUTED };
+}
+
+function SkillChangeRowItem({ sc }: { sc: LessonSkillChange }) {
+  const st = getDetailStatusStyle(sc.status, sc.delta);
+  const scoreText = sc.status === 'pending'
+    ? ''
+    : sc.delta === 0
+    ? `변동 없음 · ${sc.scoreBefore} → ${sc.scoreAfter}`
+    : `${sc.scoreBefore} → ${sc.scoreAfter}`;
+
+  return (
+    <View style={dss.skillRow}>
+      <View style={dss.skillRowHeader}>
+        <Text style={dss.skillRowName}>{sc.skill}</Text>
+        <View style={[dss.statusBadge, { backgroundColor: st.bg }]}>
+          <Text style={[dss.statusBadgeText, { color: st.text }]}>{st.label}</Text>
+        </View>
+      </View>
+      {scoreText ? <Text style={dss.scoreChange}>{scoreText}</Text> : null}
+      {sc.evaluationItems.map((item, idx) => (
+        <View key={idx} style={dss.evalItem}>
+          <View style={dss.evalItemHeader}>
+            <Text style={dss.evalPoint} numberOfLines={2}>{item.point}</Text>
+            {item.isPending && (
+              <View style={dss.pendingBadge}>
+                <Text style={dss.pendingBadgeText}>미반영</Text>
+              </View>
+            )}
+          </View>
+          {item.reason ? <Text style={dss.evalReason}>{item.reason}</Text> : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ── Change Detail Sheet ────────────────────────────────────────
+export function ChangeDetailSheet({
+  visible,
+  onClose,
+  groups,
+  onViewLesson,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  groups: LessonChangeGroup[];
+  onViewLesson: (lessonId: string | null, planId: string) => void;
+}) {
+  const [filter, setFilter] = useState<SkillName | '전체'>('전체');
+  const SKILL_FILTERS: Array<SkillName | '전체'> = ['전체', ...SKILLS];
+
+  const filtered = filter === '전체'
+    ? groups
+    : groups.filter(g => g.skillChanges.some(sc => sc.skill === filter));
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={dss.backdrop} onPress={onClose}>
+        <Pressable style={dss.container} onPress={() => {}}>
+          <View style={dss.handle} />
+          <Text style={dss.title}>이전 대비 변화</Text>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={dss.filterScroll}
+            contentContainerStyle={dss.filterContent}
+          >
+            {SKILL_FILTERS.map(skill => (
+              <TouchableOpacity
+                key={skill}
+                style={[dss.chip, filter === skill && dss.chipActive]}
+                onPress={() => setFilter(skill)}
+              >
+                <Text style={[dss.chipText, filter === skill && dss.chipTextActive]}>{skill}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <ScrollView showsVerticalScrollIndicator={false} style={dss.scrollView} contentContainerStyle={dss.scrollContent}>
+            {filtered.length === 0 ? (
+              <View style={dss.empty}>
+                <Text style={dss.emptyText}>기록이 없어요</Text>
+              </View>
+            ) : (
+              filtered.map((group, gi) => {
+                const visibleChanges = filter === '전체'
+                  ? group.skillChanges
+                  : group.skillChanges.filter(sc => sc.skill === filter);
+
+                return (
+                  <View key={group.planId} style={[dss.group, gi > 0 && dss.groupBorder]}>
+                    <View style={dss.groupHeader}>
+                      <Text style={dss.groupDate}>{formatGroupDate(group.date)}</Text>
+                      <TouchableOpacity onPress={() => { onClose(); onViewLesson(group.lessonId, group.planId); }}>
+                        <Text style={dss.lessonLink}>레슨 기록 보기</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {visibleChanges.map((sc, si) => (
+                      <SkillChangeRowItem key={si} sc={sc} />
+                    ))}
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
         </Pressable>
       </Pressable>
     </Modal>
@@ -586,18 +758,32 @@ export function RecentChangesCard({
   reports: GrowthReport[];
 }) {
   const router = useRouter();
+  const [showDetail, setShowDetail] = useState(false);
   const shown = changeEvents.slice(0, 3);
 
   if (shown.length === 0) return null;
 
   const latestNextGoals = toLines(reports[0]?.next_goals_raw ?? null);
+  const groups = computeLessonChangeGroups(reports);
 
   return (
     <View style={styles.card}>
+      <ChangeDetailSheet
+        visible={showDetail}
+        onClose={() => setShowDetail(false)}
+        groups={groups}
+        onViewLesson={(lessonId, planId) => {
+          if (lessonId) {
+            router.push({ pathname: '/lesson-detail', params: { id: lessonId } } as never);
+          } else {
+            router.push({ pathname: '/(tabs)/report' } as never);
+          }
+        }}
+      />
       <View style={styles.changeCardHeader}>
         <Text style={styles.cardTitle}>이전 대비 변화</Text>
-        <TouchableOpacity onPress={() => router.push('/growth-changes' as never)}>
-          <Text style={styles.seeAllText}>전체 변화 기록 보기</Text>
+        <TouchableOpacity onPress={() => setShowDetail(true)}>
+          <Text style={styles.seeAllText}>전체 보기 ›</Text>
         </TouchableOpacity>
       </View>
 
@@ -885,6 +1071,57 @@ const tip = StyleSheet.create({
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
     borderBottomColor: TEXT_PRIMARY,
   },
+});
+
+const dss = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  container: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingTop: 16, paddingBottom: 0,
+    maxHeight: '90%',
+    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 16,
+    shadowOffset: { width: 0, height: -4 }, elevation: 10,
+  },
+  handle: { width: 40, height: 5, backgroundColor: '#E0E0E0', borderRadius: 3, alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY, paddingHorizontal: 24, marginBottom: 12 },
+
+  filterScroll: { flexGrow: 0, marginBottom: 8 },
+  filterContent: { paddingHorizontal: 24, gap: 8, flexDirection: 'row' },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    backgroundColor: BG, borderRadius: 20,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
+  chipActive: { backgroundColor: TERRA, borderColor: TERRA },
+  chipText: { fontSize: 12, fontWeight: '600', color: TEXT_MUTED },
+  chipTextActive: { color: '#fff' },
+
+  scrollView: { flex: 1 },
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 48, paddingTop: 4 },
+
+  empty: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { fontSize: 14, color: TEXT_MUTED },
+
+  group: { paddingVertical: 16 },
+  groupBorder: { borderTopWidth: 1, borderTopColor: DIVIDER },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  groupDate: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
+  lessonLink: { fontSize: 12, color: TERRA, fontWeight: '600' },
+
+  skillRow: { backgroundColor: BG, borderRadius: 14, padding: 14, marginBottom: 8 },
+  skillRowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  skillRowName: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
+  statusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  statusBadgeText: { fontSize: 11, fontWeight: '700' },
+  scoreChange: { fontSize: 12, color: TEXT_MUTED, fontWeight: '500', marginBottom: 8 },
+
+  evalItem: { paddingTop: 8, borderTopWidth: 1, borderTopColor: DIVIDER, marginTop: 4 },
+  evalItemHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  evalPoint: { fontSize: 13, fontWeight: '600', color: TEXT_PRIMARY, flex: 1, lineHeight: 20 },
+  evalReason: { fontSize: 12, color: TEXT_MUTED, lineHeight: 18, marginTop: 4 },
+  pendingBadge: { backgroundColor: '#F4F6F9', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  pendingBadgeText: { fontSize: 10, fontWeight: '700', color: TEXT_MUTED },
 });
 
 const sheet = StyleSheet.create({
