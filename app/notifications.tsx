@@ -1,12 +1,18 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, SafeAreaView,
+  RefreshControl, SafeAreaView, Alert, LayoutAnimation,
+  Platform, UIManager,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 import { supabase, getMyMemberRow } from '../lib/supabase';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 
 const BG = '#F7F7F5';
 const CARD_WHITE = '#FFFFFF';
@@ -15,6 +21,7 @@ const LESSON_CARD_BG = '#F4E5DC';
 const TEXT_PRIMARY = '#20242C';
 const TEXT_MUTED = '#667085';
 const DIVIDER = '#E8EBEF';
+const DELETE_RED = '#E53E3E';
 
 type NotifIconName = keyof typeof Ionicons.glyphMap;
 
@@ -25,13 +32,13 @@ interface NotifTypeConfig {
 }
 
 const NOTIF_CONFIG: Record<string, NotifTypeConfig> = {
-  lesson_reminder: { icon: 'alarm-outline', label: '레슨 알림', color: '#3B82F6' },
-  lesson_report:   { icon: 'document-text-outline', label: '레슨 기록', color: TERRA },
-  chat_message:    { icon: 'chatbubble-outline', label: '메시지', color: '#8B5CF6' },
-  message:         { icon: 'chatbubble-outline', label: '메시지', color: '#8B5CF6' },
-  reregister:      { icon: 'refresh-circle-outline', label: '재등록 안내', color: '#F59E0B' },
-  lesson_update:   { icon: 'calendar-outline', label: '일정 변경', color: '#10B981' },
-  payment:         { icon: 'card-outline', label: '결제', color: '#EF4444' },
+  lesson_reminder: { icon: 'alarm-outline',           label: '레슨 알림',   color: '#3B82F6' },
+  lesson_report:   { icon: 'document-text-outline',   label: '레슨 기록',   color: TERRA },
+  chat_message:    { icon: 'chatbubble-outline',       label: '메시지',      color: '#8B5CF6' },
+  message:         { icon: 'chatbubble-outline',       label: '메시지',      color: '#8B5CF6' },
+  reregister:      { icon: 'refresh-circle-outline',  label: '재등록 안내', color: '#F59E0B' },
+  lesson_update:   { icon: 'calendar-outline',         label: '일정 변경',   color: '#10B981' },
+  payment:         { icon: 'card-outline',             label: '결제',        color: '#EF4444' },
 };
 
 const DEFAULT_CONFIG: NotifTypeConfig = {
@@ -83,6 +90,10 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const openSwipeableId = useRef<string | null>(null);
 
   async function loadNotifications() {
     const myMember = await getMyMemberRow();
@@ -93,6 +104,7 @@ export default function NotificationsScreen() {
       .from('member_notifications')
       .select('id, title, body, type, is_read, created_at, reference_id, reference_type')
       .eq('member_id', myMember.id)
+      .eq('is_deleted', false)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -110,7 +122,44 @@ export default function NotificationsScreen() {
     );
   }
 
+  function closeOpenSwipeable(exceptId?: string) {
+    const currentId = openSwipeableId.current;
+    if (currentId && currentId !== exceptId) {
+      swipeableRefs.current.get(currentId)?.close();
+    }
+  }
+
+  async function deleteNotification(id: string) {
+    if (deletingIds.has(id)) return;
+
+    swipeableRefs.current.get(id)?.close();
+
+    const snapshot = [...notifications];
+    setDeletingIds(prev => new Set([...prev, id]));
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+
+    try {
+      const { error } = await supabase
+        .from('member_notifications')
+        .update({ is_deleted: true })
+        .eq('id', id);
+      if (error) throw error;
+    } catch {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setNotifications(snapshot);
+      Alert.alert('', '삭제하지 못했어요. 다시 시도해주세요.');
+    } finally {
+      setDeletingIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+    }
+  }
+
   function handleNotifTap(notif: MemberNotification) {
+    // Block tap if this swipeable is open
+    if (openSwipeableId.current === notif.id) {
+      swipeableRefs.current.get(notif.id)?.close();
+      return;
+    }
     if (!notif.is_read) markNotifRead(notif.id);
     switch (notif.type) {
       case 'lesson_report':
@@ -136,6 +185,9 @@ export default function NotificationsScreen() {
   useFocusEffect(useCallback(() => {
     setLoading(true);
     loadNotifications();
+    return () => {
+      closeOpenSwipeable();
+    };
   }, []));
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -204,28 +256,62 @@ export default function NotificationsScreen() {
           renderItem={({ item: notif }) => {
             const config = NOTIF_CONFIG[notif.type] ?? DEFAULT_CONFIG;
             return (
-              <TouchableOpacity
-                style={[styles.notifItem, !notif.is_read && styles.notifItemUnread]}
-                onPress={() => handleNotifTap(notif)}
-                activeOpacity={0.8}
+              <Swipeable
+                ref={ref => {
+                  if (ref) swipeableRefs.current.set(notif.id, ref);
+                  else swipeableRefs.current.delete(notif.id);
+                }}
+                renderLeftActions={() => (
+                  <TouchableOpacity
+                    style={styles.deleteAction}
+                    onPress={() => deleteNotification(notif.id)}
+                    accessibilityLabel="알림 삭제"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                    <Text style={styles.deleteActionText}>삭제</Text>
+                  </TouchableOpacity>
+                )}
+                friction={2}
+                leftThreshold={60}
+                overshootLeft={false}
+                onSwipeableWillOpen={() => {
+                  closeOpenSwipeable(notif.id);
+                  openSwipeableId.current = notif.id;
+                }}
+                onSwipeableClose={() => {
+                  if (openSwipeableId.current === notif.id) {
+                    openSwipeableId.current = null;
+                  }
+                }}
               >
-                <View style={[styles.iconCircle, { backgroundColor: config.color + '18' }]}>
-                  <Ionicons name={config.icon} size={20} color={config.color} />
-                </View>
-                <View style={styles.notifContent}>
-                  <View style={styles.notifTopRow}>
-                    <Text style={[styles.notifTypeLabel, { color: config.color }]}>
-                      {config.label}
-                    </Text>
-                    <Text style={styles.notifTime}>{formatNotifTime(notif.created_at)}</Text>
+                <TouchableOpacity
+                  style={[styles.notifItem, !notif.is_read && styles.notifItemUnread]}
+                  onPress={() => handleNotifTap(notif)}
+                  activeOpacity={0.8}
+                  accessibilityActions={[{ name: 'delete', label: '알림 삭제' }]}
+                  onAccessibilityAction={({ nativeEvent }) => {
+                    if (nativeEvent.actionName === 'delete') deleteNotification(notif.id);
+                  }}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: config.color + '18' }]}>
+                    <Ionicons name={config.icon} size={20} color={config.color} />
                   </View>
-                  <Text style={[styles.notifTitle, !notif.is_read && styles.notifTitleUnread]}>
-                    {notif.title}
-                  </Text>
-                  <Text style={styles.notifBody} numberOfLines={2}>{notif.body}</Text>
-                </View>
-                {!notif.is_read && <View style={styles.unreadDot} />}
-              </TouchableOpacity>
+                  <View style={styles.notifContent}>
+                    <View style={styles.notifTopRow}>
+                      <Text style={[styles.notifTypeLabel, { color: config.color }]}>
+                        {config.label}
+                      </Text>
+                      <Text style={styles.notifTime}>{formatNotifTime(notif.created_at)}</Text>
+                    </View>
+                    <Text style={[styles.notifTitle, !notif.is_read && styles.notifTitleUnread]}>
+                      {notif.title}
+                    </Text>
+                    <Text style={styles.notifBody} numberOfLines={2}>{notif.body}</Text>
+                  </View>
+                  {!notif.is_read && <View style={styles.unreadDot} />}
+                </TouchableOpacity>
+              </Swipeable>
             );
           }}
         />
@@ -277,6 +363,16 @@ const styles = StyleSheet.create({
   // List
   listContent: { paddingVertical: 8 },
   separator: { height: 1, backgroundColor: DIVIDER, marginLeft: 76 },
+
+  // Swipe delete action
+  deleteAction: {
+    backgroundColor: DELETE_RED,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+    gap: 4,
+  },
+  deleteActionText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 
   // Notification item
   notifItem: {
@@ -348,5 +444,4 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
   emptySub: { fontSize: 13, color: TEXT_MUTED, textAlign: 'center', lineHeight: 20 },
-
 });
