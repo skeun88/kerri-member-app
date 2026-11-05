@@ -3,13 +3,18 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, TextInput, Alert, ActivityIndicator,
   SafeAreaView, Image, Linking, Modal, Dimensions,
-  TouchableWithoutFeedback, Platform,
+  TouchableWithoutFeedback, Platform, LayoutAnimation, UIManager,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { HomeSkeleton, FadeInView } from '../../components/Skeleton';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 
 // ── Design tokens ──────────────────────────────────────────────
 const BG = '#F7F7F5';
@@ -246,6 +251,11 @@ export default function HomeScreen() {
   const [linkingCode, setLinkingCode] = useState(false);
   const isConnectCode = inviteCode.length === 8;
 
+  // Notification swipe state
+  const [deletingNotifIds, setDeletingNotifIds] = useState<Set<string>>(new Set());
+  const notifSwipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const openNotifSwipeableId = useRef<string | null>(null);
+
   // Refs
   const bellBtnRef = useRef<View>(null);
   const dateViewRefs = useRef<{ [key: string]: View | null }>({});
@@ -420,10 +430,50 @@ export default function HomeScreen() {
     const { data } = await supabase.from('member_notifications')
       .select('id, title, body, type, is_read, created_at')
       .eq('member_id', member.id)
+      .eq('is_deleted', false)
       .order('created_at', { ascending: false })
       .limit(30);
     setNotifications(data ?? []);
     setNotifLoading(false);
+  }
+
+  function closeOpenNotifSwipeable(exceptId?: string) {
+    const currentId = openNotifSwipeableId.current;
+    if (currentId && currentId !== exceptId) {
+      notifSwipeableRefs.current.get(currentId)?.close();
+    }
+  }
+
+  function closeAllNotifSwipeables() {
+    notifSwipeableRefs.current.forEach(s => s.close());
+    openNotifSwipeableId.current = null;
+  }
+
+  async function deletePopupNotification(id: string) {
+    if (deletingNotifIds.has(id)) return;
+    notifSwipeableRefs.current.get(id)?.close();
+
+    const snapshot = [...notifications];
+    const wasUnread = snapshot.find(n => n.id === id)?.is_read === false;
+    setDeletingNotifIds(prev => new Set([...prev, id]));
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    if (wasUnread) setUnreadNotifCount(prev => Math.max(0, prev - 1));
+
+    try {
+      const { error } = await supabase
+        .from('member_notifications')
+        .update({ is_deleted: true })
+        .eq('id', id);
+      if (error) throw error;
+    } catch {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setNotifications(snapshot);
+      if (wasUnread) setUnreadNotifCount(prev => prev + 1);
+      Alert.alert('', '삭제하지 못했어요. 다시 시도해주세요.');
+    } finally {
+      setDeletingNotifIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+    }
   }
 
   async function markNotifRead(notifId: string) {
@@ -455,6 +505,7 @@ export default function HomeScreen() {
 
   function handleBellTap() {
     if (notifPopoverVisible) {
+      closeAllNotifSwipeables();
       setNotifPopoverVisible(false);
       return;
     }
@@ -470,7 +521,12 @@ export default function HomeScreen() {
   }
 
   function handleNotifTap(notif: MemberNotification) {
+    if (openNotifSwipeableId.current === notif.id) {
+      notifSwipeableRefs.current.get(notif.id)?.close();
+      return;
+    }
     if (!notif.is_read) markNotifRead(notif.id);
+    closeAllNotifSwipeables();
     setNotifPopoverVisible(false);
     switch (notif.type) {
       case 'lesson_report': router.push('/(tabs)/report'); break;
@@ -1134,7 +1190,7 @@ export default function HomeScreen() {
         statusBarTranslucent
         onRequestClose={() => setNotifPopoverVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setNotifPopoverVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => { closeAllNotifSwipeables(); setNotifPopoverVisible(false); }}>
           <View style={styles.popoverOverlay}>
             {notifPopoverAnchor && (() => {
               const popW = Math.min(SCREEN_W - 32, 320);
@@ -1163,19 +1219,48 @@ export default function HomeScreen() {
                     ) : (
                       <ScrollView style={styles.notifScroll} nestedScrollEnabled>
                         {notifications.map((notif, idx) => (
-                          <TouchableOpacity
+                          <Swipeable
                             key={notif.id}
-                            style={[styles.notifItem, idx > 0 && styles.notifItemDivider, !notif.is_read && styles.notifItemUnread]}
-                            onPress={() => handleNotifTap(notif)}
-                            activeOpacity={0.8}
+                            ref={ref => {
+                              if (ref) notifSwipeableRefs.current.set(notif.id, ref);
+                              else notifSwipeableRefs.current.delete(notif.id);
+                            }}
+                            renderLeftActions={() => (
+                              <TouchableOpacity
+                                style={styles.notifDeleteAction}
+                                onPress={() => deletePopupNotification(notif.id)}
+                                accessibilityLabel="알림 삭제"
+                              >
+                                <Ionicons name="trash-outline" size={16} color="#fff" />
+                                <Text style={styles.notifDeleteActionText}>삭제</Text>
+                              </TouchableOpacity>
+                            )}
+                            friction={2}
+                            leftThreshold={60}
+                            overshootLeft={false}
+                            onSwipeableWillOpen={() => {
+                              closeOpenNotifSwipeable(notif.id);
+                              openNotifSwipeableId.current = notif.id;
+                            }}
+                            onSwipeableClose={() => {
+                              if (openNotifSwipeableId.current === notif.id) {
+                                openNotifSwipeableId.current = null;
+                              }
+                            }}
                           >
-                            {!notif.is_read && <View style={styles.notifUnreadDot} />}
-                            <View style={styles.notifItemContent}>
-                              <Text style={styles.notifItemTitle} numberOfLines={1}>{notif.title}</Text>
-                              <Text style={styles.notifItemBody} numberOfLines={2}>{notif.body}</Text>
-                              <Text style={styles.notifItemTime}>{formatNotifTime(notif.created_at)}</Text>
-                            </View>
-                          </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.notifItem, idx > 0 && styles.notifItemDivider, !notif.is_read && styles.notifItemUnread]}
+                              onPress={() => handleNotifTap(notif)}
+                              activeOpacity={0.8}
+                            >
+                              {!notif.is_read && <View style={styles.notifUnreadDot} />}
+                              <View style={styles.notifItemContent}>
+                                <Text style={styles.notifItemTitle} numberOfLines={1}>{notif.title}</Text>
+                                <Text style={styles.notifItemBody} numberOfLines={2}>{notif.body}</Text>
+                                <Text style={styles.notifItemTime}>{formatNotifTime(notif.created_at)}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          </Swipeable>
                         ))}
                       </ScrollView>
                     )}
@@ -1517,6 +1602,14 @@ const styles = StyleSheet.create({
     maxHeight: 360,
     overflow: 'hidden',
   },
+  notifDeleteAction: {
+    backgroundColor: '#E53E3E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 68,
+    gap: 3,
+  },
+  notifDeleteActionText: { fontSize: 11, fontWeight: '700', color: '#fff' },
   notifPopoverHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
