@@ -269,31 +269,37 @@ export function ProfileSkeleton() {
 
 export function ReportSkeleton() {
   return (
-    <View style={sk.container}>
-      {/* 헤더 */}
-      <View style={sk.header}>
-        <View>
-          <SkeletonBox width="45%" height={20} style={{ marginBottom: 6 }} />
-          <SkeletonBox width="65%" height={13} />
+    <View style={{ flex: 1, backgroundColor: '#F7F7F5' }}>
+      {/* 헤더: SafeAreaView로 상태바 아래부터 시작 */}
+      <SafeAreaView style={{ backgroundColor: '#F7F7F5' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 }}>
+          <View style={{ flex: 1, gap: 7 }}>
+            <SkeletonBox width="42%" height={24} borderRadius={6} />
+            <SkeletonBox width="62%" height={13} borderRadius={4} />
+          </View>
+          {/* 크레딧 칩 */}
+          <SkeletonBox width={82} height={32} borderRadius={16} />
         </View>
-      </View>
+      </SafeAreaView>
 
-      {/* 리포트 아이템들 */}
-      {[0, 1, 2, 3].map(i => (
-        <View key={i} style={sk.card}>
-          <View style={[sk.row, { marginBottom: 10 }]}>
-            <SkeletonBox width="40%" height={14} />
-            <SkeletonBox width={64} height={22} borderRadius={Radius.full} />
+      {/* 리포트 카드 리스트 */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 100 }}>
+        {[0, 1, 2, 3].map(i => (
+          <View key={i} style={{ backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}>
+            {/* 카드 상단: 제목 + chevron */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ flex: 1, gap: 8 }}>
+                <SkeletonBox width={i % 2 === 0 ? '58%' : '70%'} height={16} borderRadius={4} />
+                <SkeletonBox width="72%" height={12} borderRadius={3} />
+                <View style={{ height: 1, backgroundColor: '#E9ECF1', marginVertical: 4 }} />
+                <SkeletonBox width="88%" height={14} borderRadius={4} />
+                <SkeletonBox width={i % 2 === 0 ? '65%' : '75%'} height={14} borderRadius={4} />
+              </View>
+              <SkeletonBox width={20} height={20} borderRadius={10} />
+            </View>
           </View>
-          <SkeletonBox width="90%" height={14} style={{ marginBottom: 6 }} />
-          <SkeletonBox width="70%" height={14} style={{ marginBottom: 10 }} />
-          <View style={sk.row}>
-            {[0, 1, 2].map(j => (
-              <SkeletonBox key={j} width={72} height={24} borderRadius={Radius.full} />
-            ))}
-          </View>
-        </View>
-      ))}
+        ))}
+      </ScrollView>
     </View>
   );
 }
