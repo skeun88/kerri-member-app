@@ -9,60 +9,8 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Path, Defs, ClipPath, RadialGradient, Stop, Filter, FeGaussianBlur, FeComposite } from 'react-native-svg';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { HomeSkeleton, FadeInView } from '../../components/Skeleton';
-
-// ── Fancy Tennis Ball SVG ──────────────────────────────────────
-function FancyTennisBall() {
-  return (
-    <Svg width={76} height={76} viewBox="0 0 120 120">
-      <Defs>
-        <ClipPath id="tbClip">
-          <Circle cx={60} cy={60} r={50} />
-        </ClipPath>
-        <RadialGradient id="tbGrad" cx="38%" cy="30%" r="65%">
-          <Stop offset="0%" stopColor="#D4DC6E" />
-          <Stop offset="45%" stopColor="#A8B230" />
-          <Stop offset="100%" stopColor="#6B7520" />
-        </RadialGradient>
-        <RadialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
-          <Stop offset="0%" stopColor="#C8D45A" stopOpacity="0.35" />
-          <Stop offset="100%" stopColor="#C8D45A" stopOpacity="0" />
-        </RadialGradient>
-      </Defs>
-      {/* outer glow */}
-      <Circle cx={62} cy={64} r={54} fill="url(#glowGrad)" />
-      {/* drop shadow */}
-      <Circle cx={63} cy={66} r={50} fill="rgba(0,0,0,0.13)" />
-      {/* ball body */}
-      <Circle cx={60} cy={60} r={50} fill="url(#tbGrad)" />
-      {/* seam 1 — top S-curve */}
-      <Path
-        d="M10 60 C10 18,60 8,60 60 C60 112,110 102,110 60"
-        stroke="#F0EAD0"
-        strokeWidth={5}
-        strokeOpacity={0.9}
-        fill="none"
-        strokeLinecap="round"
-        clipPath="url(#tbClip)"
-      />
-      {/* seam 2 — bottom S-curve */}
-      <Path
-        d="M10 60 C10 102,60 112,60 60 C60 8,110 18,110 60"
-        stroke="#F0EAD0"
-        strokeWidth={5}
-        strokeOpacity={0.9}
-        fill="none"
-        strokeLinecap="round"
-        clipPath="url(#tbClip)"
-      />
-      {/* specular highlight */}
-      <Circle cx={42} cy={36} r={13} fill="rgba(255,255,255,0.22)" />
-      <Circle cx={40} cy={33} r={6} fill="rgba(255,255,255,0.18)" />
-    </Svg>
-  );
-}
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -989,14 +937,6 @@ export default function HomeScreen() {
           const dday = getLessonDDay(nextLesson);
           return (
             <View style={[styles.nextLessonCard, { overflow: 'hidden' }]}>
-              <View
-                style={{ position: 'absolute', top: 10, right: 10, opacity: 0.9 }}
-                pointerEvents="none"
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-              >
-                <FancyTennisBall />
-              </View>
               <View style={styles.nextLessonTopRow}>
                 <View style={[styles.ddayChip, dday.urgent && styles.ddayChipUrgent]}>
                   <Text style={[styles.ddayChipText, dday.urgent && styles.ddayChipTextUrgent]}>
