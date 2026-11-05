@@ -758,42 +758,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* ── Next lesson card (ABOVE calendar) ────────────────── */}
-        {member && nextLesson && (() => {
-          const dday = getLessonDDay(nextLesson);
-          return (
-            <View style={styles.nextLessonCard}>
-              <View style={styles.nextLessonTopRow}>
-                <View style={[styles.ddayChip, dday.urgent && styles.ddayChipUrgent]}>
-                  <Text style={[styles.ddayChipText, dday.urgent && styles.ddayChipTextUrgent]}>
-                    {dday.label}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.nextLessonDateTime}>{formatNextLesson(nextLesson)}</Text>
-              <Text style={styles.nextLessonMeta}>
-                {[locationStr, coachProfile?.display_name ? `${coachProfile.display_name} 코치` : null]
-                  .filter(Boolean).join(' · ')}
-              </Text>
-              <TouchableOpacity
-                style={styles.nextLessonBtn}
-                onPress={() => router.push('/(tabs)/schedule')}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.nextLessonBtnText}>일정 확인하기</Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })()}
-
-        {member && !nextLesson && (
-          <View style={styles.noLessonCard}>
-            <Ionicons name="calendar-outline" size={28} color={TEXT_MUTED} />
-            <Text style={styles.noLessonText}>예정된 레슨이 없어요</Text>
-            <Text style={styles.noLessonSub}>새 일정이 등록되면 여기에서 확인할 수 있어요</Text>
-          </View>
-        )}
-
         {/* ── Swipeable Weekly Calendar ─────────────────────────── */}
         {member && (
           <View style={styles.calendarSection}>
@@ -885,6 +849,42 @@ export default function HomeScreen() {
                 );
               })}
             </View>
+          </View>
+        )}
+
+        {/* ── Next lesson card (BELOW calendar) ────────────────── */}
+        {member && nextLesson && (() => {
+          const dday = getLessonDDay(nextLesson);
+          return (
+            <View style={styles.nextLessonCard}>
+              <View style={styles.nextLessonTopRow}>
+                <View style={[styles.ddayChip, dday.urgent && styles.ddayChipUrgent]}>
+                  <Text style={[styles.ddayChipText, dday.urgent && styles.ddayChipTextUrgent]}>
+                    {dday.label}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.nextLessonDateTime}>{formatNextLesson(nextLesson)}</Text>
+              <Text style={styles.nextLessonMeta}>
+                {[locationStr, coachProfile?.display_name ? `${coachProfile.display_name} 코치` : null]
+                  .filter(Boolean).join(' · ')}
+              </Text>
+              <TouchableOpacity
+                style={styles.nextLessonBtn}
+                onPress={() => router.push('/(tabs)/schedule')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.nextLessonBtnText}>일정 확인하기</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })()}
+
+        {member && !nextLesson && (
+          <View style={styles.noLessonCard}>
+            <Ionicons name="calendar-outline" size={28} color={TEXT_MUTED} />
+            <Text style={styles.noLessonText}>예정된 레슨이 없어요</Text>
+            <Text style={styles.noLessonSub}>새 일정이 등록되면 여기에서 확인할 수 있어요</Text>
           </View>
         )}
 
