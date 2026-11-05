@@ -37,6 +37,7 @@ interface CoachReport {
   lesson_comparison: LessonComparison[] | null;
   court_type: string | null;
   session_goals: string | null;
+  ai_title: string | null;
   duration_minutes: number | null;
   report_id: string | null;
   is_read: boolean;
@@ -114,7 +115,7 @@ export default function ReportScreen() {
     const [{ data: planData }, { data: allSentReports }, credit] = await Promise.all([
       supabase
         .from('member_lesson_plan_view')
-        .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, duration_minutes, lesson_comparison')
+        .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, ai_title, duration_minutes, lesson_comparison')
         .eq('member_id', member.id)
         .order('created_at', { ascending: false })
         .limit(30),
@@ -183,6 +184,7 @@ export default function ReportScreen() {
           next_goals_raw: plan.next_goals ?? null,
           court_type: plan.court_type ?? null,
           session_goals: plan.session_goals ?? null,
+          ai_title: plan.ai_title ?? null,
           duration_minutes: plan.duration_minutes ?? null,
           lesson_comparison: Array.isArray(plan.lesson_comparison) ? plan.lesson_comparison : null,
           report_id: info.reportId,
@@ -343,7 +345,7 @@ export default function ReportScreen() {
               const achievements = report.achievements ?? [];
               const improvements = toLines(report.improvement_points_raw);
               const nextGoals = toLines(report.next_goals_raw);
-              const cardTitle = report.session_goals || formatDate(report.created_at);
+              const cardTitle = report.ai_title || report.session_goals || formatDate(report.created_at);
 
               return (
                 <TouchableOpacity
