@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
-import { PaymentSkeleton } from '../../components/Skeleton';
+import { PaymentSkeleton, FadeInView } from '../../components/Skeleton';
 import { Colors, Radius, Shadow } from '../../lib/theme';
 
 // 토스페이먼츠 테스트 클라이언트 키 (운영 시 플랫폼 키로 교체)
@@ -165,6 +165,7 @@ export default function PaymentScreen() {
   const totalPending = pending.reduce((s, p) => s + (p.amount - p.paid_amount), 0);
 
   return (
+    <FadeInView>
     <View style={styles.screen}>
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -275,6 +276,7 @@ export default function PaymentScreen() {
         </View>
       )}
     </View>
+    </FadeInView>
   );
 }
 

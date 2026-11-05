@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
-import { HomeSkeleton } from '../../components/Skeleton';
+import { HomeSkeleton, FadeInView } from '../../components/Skeleton';
 
 // ── Design tokens ──────────────────────────────────────────────
 const BG = '#F7F7F5';
@@ -627,6 +627,7 @@ export default function HomeScreen() {
   }
 
   return (
+    <FadeInView>
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         style={styles.scroll}
@@ -1185,6 +1186,7 @@ export default function HomeScreen() {
         </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
+    </FadeInView>
   );
 }
 

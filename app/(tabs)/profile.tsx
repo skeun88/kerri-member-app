@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { supabase } from '../../lib/supabase';
 import { KERRI_KAKAO_CHANNEL_URL, KERRI_KAKAO_CHANNEL_APP_URL } from '../../lib/config';
-import { ProfileSkeleton } from '../../components/Skeleton';
+import { ProfileSkeleton, FadeInView } from '../../components/Skeleton';
 
 const BG = '#FAFAFA';
 const CARD = '#FFFFFF';
@@ -206,6 +206,7 @@ export default function ProfileScreen() {
   if (loading) return <ProfileSkeleton />;
 
   return (
+    <FadeInView>
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -348,6 +349,7 @@ export default function ProfileScreen() {
         <View style={{ height: 80 }} />
       </ScrollView>
     </SafeAreaView>
+    </FadeInView>
   );
 }
 

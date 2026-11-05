@@ -12,7 +12,7 @@ import {
   REPORT_CREDIT_COST, CreditInfo,
 } from '../../lib/reportCredits';
 import { IS_BETA } from '../../lib/beta';
-import { ReportSkeleton } from '../../components/Skeleton';
+import { ReportSkeleton, FadeInView } from '../../components/Skeleton';
 import { LessonComparison, toLines, formatDate } from '../../components/GrowthDashboard';
 
 // ── Design tokens ──────────────────────────────────────────────
@@ -262,6 +262,7 @@ export default function ReportScreen() {
   if (loading) return <ReportSkeleton />;
 
   return (
+    <FadeInView>
     <View style={styles.container}>
       <ChargeModal
         visible={showChargeModal && !IS_BETA}
@@ -496,6 +497,7 @@ export default function ReportScreen() {
         )}
       </ScrollView>
     </View>
+    </FadeInView>
   );
 }
 

@@ -1,5 +1,23 @@
 import { useEffect, useRef } from 'react';
 import { Animated, View, StyleSheet, ViewStyle } from 'react-native';
+
+export function FadeInView({ children, duration = 260 }: { children: React.ReactNode; duration?: number }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(10)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={{ flex: 1, opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+}
 import { Colors, Radius } from '../lib/theme';
 
 interface BoxProps {

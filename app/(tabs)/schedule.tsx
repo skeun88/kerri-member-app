@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { notifyCoachBoganRequest, notifyCoachBoganCancel } from '../../lib/notifications';
 import { Radius, Shadow } from '../../lib/theme';
-import { ScheduleSkeleton } from '../../components/Skeleton';
+import { ScheduleSkeleton, FadeInView } from '../../components/Skeleton';
 import {
   GrowthReport,
 } from '../../components/GrowthDashboard';
@@ -828,6 +828,7 @@ export default function ScheduleScreen() {
   if (loading) return <ScheduleSkeleton />;
 
   return (
+    <FadeInView>
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       {/* ── 상단 헤더 ── */}
       <View style={s.header}>
@@ -1153,6 +1154,7 @@ export default function ScheduleScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </FadeInView>
   );
 }
 
