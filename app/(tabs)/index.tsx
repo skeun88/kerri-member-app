@@ -8,32 +8,94 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle, Path, Defs, ClipPath, RadialGradient, Stop } from 'react-native-svg';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { HomeSkeleton, FadeInView } from '../../components/Skeleton';
 
-// ── Sport decoration config ────────────────────────────────────
-const SPORT_DECO: Record<string, { source: ReturnType<typeof require>; size: number }> = {
-  tennis: { source: require('../../assets/images/deco-tennis.jpg'), size: 68 },
+// ── Sport decoration SVGs ──────────────────────────────────────
+function TennisBall() {
+  return (
+    <Svg width={68} height={68} viewBox="0 0 100 100">
+      <Defs>
+        <ClipPath id="ballClip">
+          <Circle cx={50} cy={50} r={44} />
+        </ClipPath>
+        <RadialGradient id="ballGrad" cx="40%" cy="35%" r="60%">
+          <Stop offset="0%" stopColor="#C8CF6A" />
+          <Stop offset="60%" stopColor="#9EA83A" />
+          <Stop offset="100%" stopColor="#6E7428" />
+        </RadialGradient>
+      </Defs>
+      {/* shadow */}
+      <Circle cx={52} cy={54} r={44} fill="rgba(0,0,0,0.10)" />
+      {/* ball */}
+      <Circle cx={50} cy={50} r={44} fill="url(#ballGrad)" />
+      {/* highlight */}
+      <Circle cx={36} cy={34} r={10} fill="rgba(255,255,255,0.18)" />
+      {/* seams clipped to ball */}
+      <Path
+        d="M6 50 C6 14,50 6,50 50 C50 94,94 86,94 50"
+        stroke="#EDE8D2"
+        strokeWidth={4.5}
+        fill="none"
+        strokeLinecap="round"
+        clipPath="url(#ballClip)"
+      />
+      <Path
+        d="M6 50 C6 86,50 94,50 50 C50 6,94 14,94 50"
+        stroke="#EDE8D2"
+        strokeWidth={4.5}
+        fill="none"
+        strokeLinecap="round"
+        clipPath="url(#ballClip)"
+      />
+    </Svg>
+  );
+}
+
+function KerriDeco() {
+  return (
+    <Svg width={56} height={56} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id="decoGrad" cx="40%" cy="35%" r="65%">
+          <Stop offset="0%" stopColor="#D9A88A" />
+          <Stop offset="100%" stopColor="#C0755A" />
+        </RadialGradient>
+      </Defs>
+      <Circle cx={52} cy={54} r={42} fill="rgba(0,0,0,0.08)" />
+      <Circle cx={50} cy={50} r={42} fill="url(#decoGrad)" />
+      <Circle cx={37} cy={34} r={9} fill="rgba(255,255,255,0.20)" />
+      {/* K letter mark */}
+      <Path
+        d="M34 30 L34 70 M34 50 L58 30 M34 50 L58 70"
+        stroke="#FFF8F5"
+        strokeWidth={6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+const SPORT_KEY_MAP: Record<string, string> = {
+  '테니스': 'tennis',
+  tennis: 'tennis',
+  TENNIS: 'tennis',
 };
-const KERRI_DECO_FALLBACK = null; // no image for unknown sports yet
 
 function SportDeco({ sport }: { sport: string | null | undefined }) {
-  const key = (sport ?? '').toLowerCase();
-  const deco = SPORT_DECO[key] ?? null;
-  if (!deco) return null;
+  const key = sport ? (SPORT_KEY_MAP[sport] ?? SPORT_KEY_MAP[sport.toUpperCase()]) : undefined;
+  const size = key === 'tennis' ? 68 : 56;
   return (
-    <Image
-      source={deco.source}
-      style={{
-        position: 'absolute', top: 16, right: 16,
-        width: deco.size, height: deco.size,
-        borderRadius: deco.size / 2,
-        opacity: 0.88,
-      }}
+    <View
+      style={{ position: 'absolute', top: 16, right: 16, width: size, height: size, opacity: 0.92 }}
+      pointerEvents="none"
       accessibilityElementsHidden
-      importantForAccessibility="no"
-      resizeMode="cover"
-    />
+      importantForAccessibility="no-hide-descendants"
+    >
+      {key === 'tennis' ? <TennisBall /> : <KerriDeco />}
+    </View>
   );
 }
 
