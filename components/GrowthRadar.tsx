@@ -724,10 +724,8 @@ function ChangesBottomSheet({
 // ── Snapshot Change Summary ────────────────────────────────────
 function SnapshotChangeSummary({
   snapshot,
-  onViewLesson,
 }: {
   snapshot: SnapshotState;
-  onViewLesson: () => void;
 }) {
   const knownChanges = snapshot.changes.filter(c => c.skill !== null);
 
@@ -735,10 +733,6 @@ function SnapshotChangeSummary({
     return (
       <View style={styles.snapContainer}>
         <Text style={styles.snapEmpty}>이 기록에 기술별 비교 데이터가 없어요</Text>
-        <TouchableOpacity style={styles.snapViewBtn} onPress={onViewLesson}>
-          <Text style={styles.snapViewBtnText}>이 레슨 기록 보기</Text>
-          <Ionicons name="chevron-forward" size={12} color={TERRA} />
-        </TouchableOpacity>
       </View>
     );
   }
@@ -750,7 +744,7 @@ function SnapshotChangeSummary({
           return (
             <View key={i} style={[styles.snapRow, i < knownChanges.length - 1 && styles.snapRowBorder]}>
               <Text style={styles.snapSkill}>{c.skill}</Text>
-              <Text style={styles.snapPending}>미평가 · 판단 보류</Text>
+              <Text style={styles.snapPending}>점수 반영 전</Text>
             </View>
           );
         }
@@ -768,10 +762,6 @@ function SnapshotChangeSummary({
           </View>
         );
       })}
-      <TouchableOpacity style={styles.snapViewBtn} onPress={onViewLesson}>
-        <Text style={styles.snapViewBtnText}>이 레슨 기록 보기</Text>
-        <Ionicons name="chevron-forward" size={12} color={TERRA} />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -930,13 +920,6 @@ export function GrowthBalanceCard({
           {selectedSnapshot && (
             <SnapshotChangeSummary
               snapshot={selectedSnapshot}
-              onViewLesson={() => {
-                if (selectedSnapshot.lessonId) {
-                  router.push({ pathname: '/lesson-detail', params: { id: selectedSnapshot.lessonId } } as never);
-                } else {
-                  router.push('/(tabs)/report' as never);
-                }
-              }}
             />
           )}
         </View>
@@ -962,7 +945,14 @@ export function RecentChangesCard({
   const [showSheet, setShowSheet] = useState(false);
   const shown = changeEvents.slice(0, 3);
 
-  if (shown.length === 0) return null;
+  if (shown.length === 0) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>이전 대비 변화</Text>
+        <Text style={styles.changeEmptyText}>아직 비교할 기록이 없어요</Text>
+      </View>
+    );
+  }
 
   const latestNextGoals = toLines(reports[0]?.next_goals_raw ?? null);
 
@@ -1218,6 +1208,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: DIVIDER,
   },
   snapViewBtnText: { fontSize: 13, fontWeight: '600', color: TERRA },
+  changeEmptyText: { fontSize: 13, color: TEXT_MUTED, marginTop: 10, textAlign: 'center', paddingVertical: 8 },
   changeCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   seeAllText: { fontSize: 13, color: TERRA, fontWeight: '700' },
   changeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 8 },

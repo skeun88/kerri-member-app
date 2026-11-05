@@ -603,6 +603,7 @@ export default function ScheduleScreen() {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [payDetailModal, setPayDetailModal] = useState(false);
   const [growthReports, setGrowthReports] = useState<GrowthReport[]>([]);
+  const loadTokenRef = useRef(0);
 
   const router = useRouter();
   const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
@@ -624,7 +625,10 @@ export default function ScheduleScreen() {
   const [reportModal, setReportModal] = useState(false);
 
   async function loadData() {
+    const token = ++loadTokenRef.current;
+    setGrowthReports([]);
     const mem = await getMyMemberRow();
+    if (token !== loadTokenRef.current) return; // stale — newer loadData already running
     if (!mem) { setLoading(false); return; }
     setMember(mem);
 
@@ -674,12 +678,17 @@ export default function ScheduleScreen() {
     setMemberReports(reports ?? []);
 
     // lesson_id is not in member_lesson_plan_view — do not select it or PostgREST errors
-    const { data: planData } = await supabase
+    const { data: planData, error: planError } = await supabase
       .from('member_lesson_plan_view')
       .select('id, created_at, lesson_comparison, next_goals, achievements, improvement_points')
       .eq('member_id', mem.id)
       .order('created_at', { ascending: false })
       .limit(30);
+    if (planError) {
+      if (token !== loadTokenRef.current) return;
+      setLoading(false);
+      return;
+    }
 
     // Old sent reports that predate the lesson_plan_id system
     const { data: oldSentReports } = await supabase
@@ -727,6 +736,7 @@ export default function ScheduleScreen() {
     const allReports = [...planReports, ...oldReports].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+    if (token !== loadTokenRef.current) return; // stale response — discard
     setGrowthReports(allReports);
 
     setLoading(false);
