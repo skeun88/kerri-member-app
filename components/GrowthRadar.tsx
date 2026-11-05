@@ -665,9 +665,11 @@ function ChangesBottomSheet({
 export function GrowthBalanceCard({
   skillScores,
   latestPlanId,
+  hasReports = false,
 }: {
   skillScores: SkillScoreResult[];
   latestPlanId: string | null;
+  hasReports?: boolean;
 }) {
   const router = useRouter();
   const [animPhase, setAnimPhase] = useState(1);
@@ -770,7 +772,9 @@ export function GrowthBalanceCard({
       {ratedCount === 0 ? (
         <View style={styles.emptyChart}>
           <Text style={styles.emptyChartText}>
-            첫 레슨 기록부터 나의 변화가 쌓여요
+            {hasReports
+              ? '레슨 기록은 도착했어요.\n기술별 비교 근거가 쌓이면 포인트에 반영돼요'
+              : '첫 레슨 기록부터 나의 변화가 쌓여요'}
           </Text>
         </View>
       ) : (
