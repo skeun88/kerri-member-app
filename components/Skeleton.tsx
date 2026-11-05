@@ -67,14 +67,6 @@ export function HomeSkeleton() {
           <SkeletonBox width="35%" height={14} borderRadius={4} />
         </View>
 
-        {/* 다음 레슨 카드 (복숭아색) */}
-        <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: '#F4E5DC', borderRadius: 20, padding: 20 }}>
-          <SkeletonBox width={52} height={20} borderRadius={10} dark style={{ marginBottom: 12 }} />
-          <SkeletonBox width="70%" height={20} borderRadius={6} dark style={{ marginBottom: 6 }} />
-          <SkeletonBox width="48%" height={13} borderRadius={4} dark style={{ marginBottom: 18 }} />
-          <SkeletonBox width="100%" height={42} borderRadius={12} dark />
-        </View>
-
         {/* 주간 캘린더 */}
         <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
           {/* 캘린더 헤더: 이전/다음 버튼 + 월 라벨 */}
@@ -93,6 +85,14 @@ export function HomeSkeleton() {
               </View>
             ))}
           </View>
+        </View>
+
+        {/* 다음 레슨 카드 (복숭아색) */}
+        <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: '#F4E5DC', borderRadius: 20, padding: 20 }}>
+          <SkeletonBox width={52} height={20} borderRadius={10} dark style={{ marginBottom: 12 }} />
+          <SkeletonBox width="70%" height={20} borderRadius={6} dark style={{ marginBottom: 6 }} />
+          <SkeletonBox width="48%" height={13} borderRadius={4} dark style={{ marginBottom: 18 }} />
+          <SkeletonBox width="100%" height={42} borderRadius={12} dark />
         </View>
 
         {/* 통계 2개 카드 */}
