@@ -11,6 +11,12 @@ import { Colors } from '../lib/theme';
 const TERRA = '#C0755A';
 const PEACH = '#F8EEE9';
 
+interface JourneySnapshot {
+  members_count: number;
+  lessons_count: number;
+  reports_count: number;
+}
+
 interface CoachFullProfile {
   display_name: string | null;
   avatar_url: string | null;
@@ -25,6 +31,8 @@ interface CoachFullProfile {
   career_details: string | null;
   certifications: string | null;
   awards: string | null;
+  show_coaching_journey: boolean | null;
+  journey_snapshot: JourneySnapshot | null;
 }
 
 export default function CoachProfileScreen() {
@@ -37,7 +45,7 @@ export default function CoachProfileScreen() {
     if (!coachId) { setLoading(false); return; }
     supabase
       .from('coach_profiles')
-      .select('display_name, avatar_url, sport, region_city, region_district, center_name, academy_name, bio, coaching_years, has_player_career, career_details, certifications, awards')
+      .select('display_name, avatar_url, sport, region_city, region_district, center_name, academy_name, bio, coaching_years, has_player_career, career_details, certifications, awards, show_coaching_journey, journey_snapshot')
       .eq('coach_id', coachId)
       .maybeSingle()
       .then(({ data }) => {
@@ -142,10 +150,33 @@ export default function CoachProfileScreen() {
             </View>
           ) : null}
 
+          {/* ── 코칭 여정 (코치가 공개로 설정한 경우에만 표시) ── */}
+          {profile.show_coaching_journey && profile.journey_snapshot ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>코칭 여정</Text>
+              <View style={styles.journeyGrid}>
+                <JourneyStat value={`${profile.journey_snapshot.members_count}명`} label="함께한 회원" />
+                <View style={styles.journeyDivider} />
+                <JourneyStat value={`${profile.journey_snapshot.lessons_count.toLocaleString()}회`} label="진행한 레슨" />
+                <View style={styles.journeyDivider} />
+                <JourneyStat value={`${profile.journey_snapshot.reports_count}개`} label="레슨 기록" />
+              </View>
+            </View>
+          ) : null}
+
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+function JourneyStat({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={styles.journeyStat}>
+      <Text style={styles.journeyStatValue}>{value}</Text>
+      <Text style={styles.journeyStatLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -223,4 +254,14 @@ const styles = StyleSheet.create({
   },
   infoLabel: { fontSize: 12, color: Colors.mutedFg, marginBottom: 2 },
   infoValue: { fontSize: 14, color: Colors.foreground },
+
+  journeyGrid: {
+    flexDirection: 'row', alignItems: 'center',
+  },
+  journeyStat: {
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+  },
+  journeyStatValue: { fontSize: 20, fontWeight: '800', color: Colors.foreground, marginBottom: 4 },
+  journeyStatLabel: { fontSize: 12, fontWeight: '600', color: Colors.mutedFg, textAlign: 'center' },
+  journeyDivider: { width: 1, height: 36, backgroundColor: Colors.borderLight },
 });
