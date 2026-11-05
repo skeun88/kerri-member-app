@@ -796,18 +796,34 @@ export default function HomeScreen() {
         {/* ── Swipeable Weekly Calendar ─────────────────────────── */}
         {member && (
           <View style={styles.calendarSection}>
-            {/* Month/year header + today button */}
+            {/* Month/year header + prev/next week buttons */}
             <View style={styles.calendarHeader}>
-              <Text style={styles.calendarMonthLabel}>{monthYearLabel}</Text>
-              {weekOffset !== 0 && (
-                <TouchableOpacity
-                  style={styles.todayBtn}
-                  onPress={() => { setWeekOffset(0); setDatePopoverVisible(false); }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.todayBtnText}>오늘</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                onPress={() => { setWeekOffset(prev => prev - 1); setDatePopoverVisible(false); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.calNavBtn}
+              >
+                <Ionicons name="chevron-back" size={18} color={TEXT_MUTED} />
+              </TouchableOpacity>
+              <View style={styles.calHeaderCenter}>
+                <Text style={styles.calendarMonthLabel}>{monthYearLabel}</Text>
+                {weekOffset !== 0 && (
+                  <TouchableOpacity
+                    style={styles.todayBtn}
+                    onPress={() => { setWeekOffset(0); setDatePopoverVisible(false); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.todayBtnText}>오늘</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity
+                onPress={() => { setWeekOffset(prev => prev + 1); setDatePopoverVisible(false); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.calNavBtn}
+              >
+                <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+              </TouchableOpacity>
             </View>
 
             {/* Calendar strip with swipe */}
@@ -1275,6 +1291,12 @@ const styles = StyleSheet.create({
   calendarHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: 8, paddingHorizontal: 4,
+  },
+  calHeaderCenter: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'center',
+  },
+  calNavBtn: {
+    padding: 4,
   },
   calendarMonthLabel: {
     fontSize: 13, fontWeight: '700', color: TEXT_MUTED,
