@@ -62,12 +62,12 @@ export default function WriteReviewScreen() {
     if (user) setMemberAuthUid(user.id);
     if (member) setMemberId(member.id);
 
-    if (user && coachId) {
+    if (member && coachId) {
       const { data: existing } = await supabase
         .from('coach_reviews')
         .select('id, rating, keyword_codes, comment')
         .eq('coach_id', coachId)
-        .eq('member_id', user.id)
+        .eq('member_id', member.id)
         .eq('is_deleted', false)
         .maybeSingle();
 
@@ -100,10 +100,11 @@ export default function WriteReviewScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !coachId) throw new Error('인증 오류');
+      if (!memberId) throw new Error('회원 정보를 찾을 수 없어요');
 
       const reviewData = {
         coach_id: coachId,
-        member_id: user.id,
+        member_id: memberId,
         rating,
         keyword_codes: selectedKeywords,
         comment: comment.trim() || null,
