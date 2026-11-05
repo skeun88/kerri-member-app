@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, View, StyleSheet, ViewStyle } from 'react-native';
+import { Animated, View, StyleSheet, ViewStyle, SafeAreaView, ScrollView } from 'react-native';
 
 export function FadeInView({ children, duration = 260 }: { children: React.ReactNode; duration?: number }) {
   const opacity = useRef(new Animated.Value(0)).current;
@@ -53,70 +53,100 @@ export function SkeletonBox({ width = '100%', height = 16, borderRadius = 8, sty
 
 export function HomeSkeleton() {
   return (
-    <View style={{ flex: 1, backgroundColor: '#F7F7F5' }}>
-      {/* 앱 헤더: KERRI 로고 + 벨 */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
-        <SkeletonBox width={72} height={22} borderRadius={4} />
-        <SkeletonBox width={36} height={36} borderRadius={18} />
-      </View>
-
-      {/* greeting */}
-      <View style={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: 16 }}>
-        <SkeletonBox width="55%" height={22} borderRadius={6} style={{ marginBottom: 6 }} />
-        <SkeletonBox width="35%" height={14} borderRadius={4} />
-      </View>
-
-      {/* 다음 레슨 카드 (복숭아색 배경) */}
-      <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: '#F4E5DC', borderRadius: 20, padding: 20 }}>
-        <SkeletonBox width={52} height={22} borderRadius={10} dark style={{ marginBottom: 10 }} />
-        <SkeletonBox width="70%" height={20} borderRadius={6} dark style={{ marginBottom: 6 }} />
-        <SkeletonBox width="50%" height={13} borderRadius={4} dark style={{ marginBottom: 16 }} />
-        <SkeletonBox width="100%" height={40} borderRadius={12} dark />
-      </View>
-
-      {/* 주간 캘린더 */}
-      <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
-          <SkeletonBox width={72} height={13} borderRadius={4} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F5' }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+        {/* 앱 헤더: KERRI 로고 + 벨 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+          <SkeletonBox width={72} height={22} borderRadius={4} />
+          <SkeletonBox width={36} height={36} borderRadius={18} />
         </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 8, paddingVertical: 12, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
-          {[0, 1, 2, 3, 4, 5, 6].map(i => (
-            <View key={i} style={{ alignItems: 'center', flex: 1, gap: 6 }}>
-              <SkeletonBox width={16} height={12} borderRadius={3} />
-              <SkeletonBox width={30} height={30} borderRadius={15} />
-              <SkeletonBox width={5} height={5} borderRadius={3} />
+
+        {/* 인사 */}
+        <View style={{ paddingHorizontal: 20, paddingTop: 6, paddingBottom: 16 }}>
+          <SkeletonBox width="55%" height={22} borderRadius={6} style={{ marginBottom: 6 }} />
+          <SkeletonBox width="35%" height={14} borderRadius={4} />
+        </View>
+
+        {/* 다음 레슨 카드 (복숭아색) */}
+        <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: '#F4E5DC', borderRadius: 20, padding: 20 }}>
+          <SkeletonBox width={52} height={20} borderRadius={10} dark style={{ marginBottom: 12 }} />
+          <SkeletonBox width="70%" height={20} borderRadius={6} dark style={{ marginBottom: 6 }} />
+          <SkeletonBox width="48%" height={13} borderRadius={4} dark style={{ marginBottom: 18 }} />
+          <SkeletonBox width="100%" height={42} borderRadius={12} dark />
+        </View>
+
+        {/* 주간 캘린더 */}
+        <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+          {/* 캘린더 헤더: 이전/다음 버튼 + 월 라벨 */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+            <SkeletonBox width={20} height={20} borderRadius={10} />
+            <SkeletonBox width={72} height={14} borderRadius={4} />
+            <SkeletonBox width={20} height={20} borderRadius={10} />
+          </View>
+          {/* 요일+날짜 스트립 */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 8, paddingVertical: 12, backgroundColor: '#FFFFFF', borderRadius: 16 }}>
+            {[0, 1, 2, 3, 4, 5, 6].map(i => (
+              <View key={i} style={{ alignItems: 'center', flex: 1, gap: 5 }}>
+                <SkeletonBox width={14} height={12} borderRadius={3} />
+                <SkeletonBox width={30} height={30} borderRadius={15} />
+                <SkeletonBox width={5} height={5} borderRadius={3} />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* 통계 2개 카드 */}
+        <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 16, marginBottom: 12 }}>
+          {[0, 1].map(i => (
+            <View key={i} style={{ flex: 1, backgroundColor: '#FDFAF8', borderRadius: 16, padding: 18, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#E8EBEF' }}>
+              <SkeletonBox width={52} height={24} borderRadius={4} />
+              <SkeletonBox width={40} height={12} borderRadius={3} />
             </View>
           ))}
         </View>
-      </View>
 
-      {/* 통계 2개 카드 */}
-      <View style={{ flexDirection: 'row', gap: 12, marginHorizontal: 16, marginBottom: 12 }}>
-        {[0, 1].map(i => (
-          <View key={i} style={{ flex: 1, backgroundColor: '#FDFAF8', borderRadius: 16, padding: 18, alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#E8EBEF' }}>
-            <SkeletonBox width={52} height={24} borderRadius={4} />
-            <SkeletonBox width={40} height={12} borderRadius={3} />
+        {/* 지난 레슨 브리핑 카드 */}
+        <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+          <SkeletonBox width="40%" height={15} borderRadius={4} style={{ marginBottom: 10 }} />
+          <View style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E8EBEF' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 12, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E8EBEF' }}>
+              <SkeletonBox width="42%" height={13} borderRadius={4} />
+              <SkeletonBox width="28%" height={13} borderRadius={4} />
+            </View>
+            <View style={{ backgroundColor: '#F3F4F6', borderRadius: 10, padding: 12, marginBottom: 10, gap: 8 }}>
+              <SkeletonBox width="28%" height={11} borderRadius={3} />
+              <SkeletonBox width="88%" height={13} borderRadius={4} />
+              <SkeletonBox width="72%" height={13} borderRadius={4} />
+            </View>
+            <View style={{ backgroundColor: '#F8EEE9', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+              <SkeletonBox width="22%" height={11} borderRadius={3} style={{ marginBottom: 8 }} />
+              <SkeletonBox width="80%" height={13} borderRadius={4} />
+            </View>
+            <SkeletonBox width="100%" height={36} borderRadius={10} />
           </View>
-        ))}
-      </View>
-
-      {/* 브리핑 카드 */}
-      <View style={{ marginHorizontal: 16 }}>
-        <SkeletonBox width="40%" height={16} borderRadius={4} style={{ marginBottom: 10 }} />
-        <View style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E8EBEF' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 12, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E8EBEF' }}>
-            <SkeletonBox width="45%" height={13} borderRadius={4} />
-            <SkeletonBox width="30%" height={13} borderRadius={4} />
-          </View>
-          <View style={{ backgroundColor: '#F3F4F6', borderRadius: 10, padding: 12, marginBottom: 10, gap: 8 }}>
-            <SkeletonBox width="30%" height={11} borderRadius={3} />
-            <SkeletonBox width="90%" height={13} borderRadius={4} />
-            <SkeletonBox width="75%" height={13} borderRadius={4} />
-          </View>
-          <SkeletonBox width="100%" height={36} borderRadius={10} />
         </View>
-      </View>
-    </View>
+
+        {/* 담당 코치 카드 */}
+        <View style={{ marginHorizontal: 16, marginBottom: 8 }}>
+          <SkeletonBox width="30%" height={15} borderRadius={4} style={{ marginBottom: 10 }} />
+          <View style={{ backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E8EBEF', overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 }}>
+              <SkeletonBox width={48} height={48} borderRadius={24} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <SkeletonBox width="45%" height={15} borderRadius={4} />
+                <SkeletonBox width="60%" height={12} borderRadius={3} />
+              </View>
+              <SkeletonBox width={16} height={16} borderRadius={8} />
+            </View>
+            <View style={{ height: 1, backgroundColor: '#E8EBEF', marginHorizontal: 16 }} />
+            <View style={{ flexDirection: 'row', gap: 10, padding: 14 }}>
+              <SkeletonBox width="48%" height={40} borderRadius={12} />
+              <SkeletonBox width="48%" height={40} borderRadius={12} />
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
