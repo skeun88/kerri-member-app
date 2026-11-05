@@ -11,6 +11,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { HomeSkeleton, FadeInView } from '../../components/Skeleton';
 
+// ── Sport decoration config ────────────────────────────────────
+const SPORT_DECO: Record<string, { source: ReturnType<typeof require>; size: number }> = {
+  tennis: { source: require('../../assets/images/deco-tennis.jpg'), size: 68 },
+};
+const KERRI_DECO_FALLBACK = null; // no image for unknown sports yet
+
+function SportDeco({ sport }: { sport: string | null | undefined }) {
+  const key = (sport ?? '').toLowerCase();
+  const deco = SPORT_DECO[key] ?? null;
+  if (!deco) return null;
+  return (
+    <Image
+      source={deco.source}
+      style={{
+        position: 'absolute', top: 16, right: 16,
+        width: deco.size, height: deco.size,
+        borderRadius: deco.size / 2,
+        opacity: 0.88,
+      }}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      resizeMode="cover"
+    />
+  );
+}
+
 // ── Design tokens ──────────────────────────────────────────────
 const BG = '#F7F7F5';
 const CARD_WHITE = '#FFFFFF';
@@ -856,7 +882,8 @@ export default function HomeScreen() {
         {member && nextLesson && (() => {
           const dday = getLessonDDay(nextLesson);
           return (
-            <View style={styles.nextLessonCard}>
+            <View style={[styles.nextLessonCard, { overflow: 'hidden' }]}>
+              <SportDeco sport={coachProfile?.sport} />
               <View style={styles.nextLessonTopRow}>
                 <View style={[styles.ddayChip, dday.urgent && styles.ddayChipUrgent]}>
                   <Text style={[styles.ddayChipText, dday.urgent && styles.ddayChipTextUrgent]}>
