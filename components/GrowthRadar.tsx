@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Pressable, Modal,
+  FlatList, ScrollView,
+} from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,19 +25,24 @@ const GRID_COLOR = '#E8EBEF';
 export const SKILLS = ['포핸드', '백핸드', '서브', '발리', '풋워크', '랠리'] as const;
 export type SkillName = (typeof SKILLS)[number];
 
-export const BASE_SCORE = 20; // 모든 기술의 기본 포인트
+export const BASE_SCORE = 20;
 const CX = 160;
 const CY = 142;
 const R = 84;
 const SVG_W = 320;
-const SVG_H = 290;
+const SVG_H = 300;
 const LABEL_R = R + 24;
-const SEEN_KEY = '@growth_seen_plans_v2'; // v2: 0-100 scale
+const SEEN_KEY = '@growth_seen_plans_v2';
+
+const SKILL_FILTERS: Array<{ key: SkillName | 'all'; label: string }> = [
+  { key: 'all', label: '전체' },
+  ...SKILLS.map(s => ({ key: s as SkillName, label: s })),
+];
 
 // ── Types ──────────────────────────────────────────────────────
 export interface SkillScoreResult {
   skill: SkillName;
-  current: number | null; // null = never evaluated
+  current: number | null;
   previous: number | null;
   delta: number;
   rated: boolean;
@@ -47,11 +55,32 @@ export interface SkillScoreResult {
 export interface SkillChangeEvent {
   date: string;
   skill: SkillName;
+  point: string;
   status: string;
   delta: number;
+  before: number;
+  after: number;
   reason: string | null;
   planId: string;
   lessonId: string | null;
+}
+
+interface SheetSkillRow {
+  skill: SkillName | null;
+  points: string[];
+  reasons: string[];
+  status: string;
+  delta: number;
+  before: number;
+  after: number;
+  isPending: boolean;
+}
+
+interface SheetLessonGroup {
+  planId: string;
+  date: string;
+  lessonId: string | null;
+  rows: SheetSkillRow[];
 }
 
 // ── Score helpers ──────────────────────────────────────────────
@@ -149,71 +178,90 @@ export function computeChangeEvents(reports: GrowthReport[]): SkillChangeEvent[]
       seenThisLesson.add(skill);
       const before = running[skill] ?? BASE_SCORE;
       const delta = getDelta(before, c.status);
-      running[skill] = Math.max(0, Math.min(100, before + delta));
+      const after = Math.max(0, Math.min(100, before + delta));
+      running[skill] = after;
       if (c.status) {
-        events.push({ date: r.created_at, skill, status: c.status, delta, reason: c.reason ?? null, planId: r.plan_id, lessonId: r.lesson_id ?? null });
+        events.push({
+          date: r.created_at,
+          skill,
+          point: c.point,
+          status: c.status,
+          delta,
+          before,
+          after,
+          reason: c.reason ?? null,
+          planId: r.plan_id,
+          lessonId: r.lesson_id ?? null,
+        });
       }
     }
   }
   return events.reverse();
 }
 
-// ── Detailed change types ──────────────────────────────────────
-export interface LessonEvalItem {
-  point: string;
-  status: string;
-  reason: string | null;
-  isPending: boolean;
-}
-
-export interface LessonSkillChange {
-  skill: SkillName;
-  status: string;
-  delta: number;
-  scoreBefore: number;
-  scoreAfter: number;
-  evaluationItems: LessonEvalItem[];
-}
-
-export interface LessonChangeGroup {
-  date: string;
-  lessonId: string | null;
-  planId: string;
-  skillChanges: LessonSkillChange[];
-}
-
-export function computeLessonChangeGroups(reports: GrowthReport[]): LessonChangeGroup[] {
-  const groups: LessonChangeGroup[] = [];
+function computeSheetData(reports: GrowthReport[]): SheetLessonGroup[] {
   const oldest = [...reports].reverse();
   const running: Partial<Record<SkillName, number>> = {};
-  const knownStatuses = ['improved', 'same', 'maintained', 'needs_work', 'regressed'];
+  const groups: SheetLessonGroup[] = [];
+  const knownStatuses = new Set(['improved', 'same', 'maintained', 'needs_work', 'regressed']);
 
   for (const r of oldest) {
-    if (!r.lesson_comparison) continue;
+    if (!r.lesson_comparison || r.lesson_comparison.length === 0) continue;
 
-    const bySkill = new Map<SkillName, LessonEvalItem[]>();
+    // First pass: accumulate per-skill scores for this lesson
+    const skillScoreMap = new Map<SkillName, { before: number; after: number; delta: number; status: string }>();
+    const seenFirst = new Set<SkillName>();
     for (const c of r.lesson_comparison) {
       const skill = detectSkill(c as any);
-      if (!skill) continue;
-      const isPending = !knownStatuses.includes(c.status);
-      if (!bySkill.has(skill)) bySkill.set(skill, []);
-      bySkill.get(skill)!.push({ point: c.point, status: c.status, reason: c.reason ?? null, isPending });
+      if (!skill || seenFirst.has(skill)) continue;
+      seenFirst.add(skill);
+      if (!knownStatuses.has(c.status)) continue;
+      const before = running[skill] ?? BASE_SCORE;
+      const delta = getDelta(before, c.status);
+      const after = Math.max(0, Math.min(100, before + delta));
+      skillScoreMap.set(skill, { before, after, delta, status: c.status });
+      running[skill] = after;
     }
 
-    const skillChanges: LessonSkillChange[] = [];
-    for (const [skill, items] of bySkill) {
-      const scoreBefore = running[skill] ?? BASE_SCORE;
-      const primary = items.find(item => !item.isPending);
-      let delta = 0;
-      const status = primary?.status ?? 'pending';
-      if (primary) delta = getDelta(scoreBefore, primary.status);
-      const scoreAfter = Math.max(0, Math.min(100, scoreBefore + delta));
-      running[skill] = scoreAfter;
-      skillChanges.push({ skill, status, delta, scoreBefore, scoreAfter, evaluationItems: items });
+    // Second pass: build rows, merging reasons for the same skill
+    const skillRowMap = new Map<SkillName, SheetSkillRow>();
+    const otherRows: SheetSkillRow[] = [];
+
+    for (const c of r.lesson_comparison) {
+      const isPending = !c.status || !knownStatuses.has(c.status);
+      const skill = detectSkill(c as any);
+
+      if (isPending) {
+        otherRows.push({ skill: null, points: [c.point], reasons: c.reason ? [c.reason] : [], status: c.status || '', delta: 0, before: 0, after: 0, isPending: true });
+        continue;
+      }
+      if (!skill) {
+        otherRows.push({ skill: null, points: [c.point], reasons: c.reason ? [c.reason] : [], status: c.status, delta: 0, before: 0, after: 0, isPending: false });
+        continue;
+      }
+
+      const scores = skillScoreMap.get(skill);
+      if (skillRowMap.has(skill)) {
+        const existing = skillRowMap.get(skill)!;
+        if (c.point && !existing.points.includes(c.point)) existing.points.push(c.point);
+        if (c.reason) existing.reasons.push(c.reason);
+      } else {
+        skillRowMap.set(skill, {
+          skill,
+          points: [c.point],
+          reasons: c.reason ? [c.reason] : [],
+          status: c.status,
+          delta: scores?.delta ?? 0,
+          before: scores?.before ?? (running[skill] ?? BASE_SCORE),
+          after: scores?.after ?? (running[skill] ?? BASE_SCORE),
+          isPending: false,
+        });
+      }
     }
 
-    if (skillChanges.length > 0) {
-      groups.push({ date: r.created_at, lessonId: r.lesson_id ?? null, planId: r.plan_id, skillChanges });
+    const rows: SheetSkillRow[] = [...skillRowMap.values(), ...otherRows];
+    if (rows.length > 0) {
+      groups.push({ planId: r.plan_id, date: r.created_at, lessonId: r.lesson_id ?? null, rows });
     }
   }
 
@@ -225,7 +273,7 @@ function skillAngle(i: number) { return -Math.PI / 2 + i * (Math.PI / 3); }
 
 function getPoint(i: number, score: number) {
   const a = skillAngle(i);
-  const r = (score / 100) * R; // 0-100 scale
+  const r = (score / 100) * R;
   return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) };
 }
 
@@ -258,7 +306,6 @@ function HexRadarChart({
   hasPrevious: boolean;
   onSkillPress?: (index: number) => void;
 }) {
-  // All 6 always have a display value (unrated = BASE_SCORE)
   const displayCurrent = skillScores.map(s => {
     const target = s.current ?? BASE_SCORE;
     const from = s.previous ?? BASE_SCORE;
@@ -266,13 +313,12 @@ function HexRadarChart({
   });
 
   const displayPrev = skillScores.map(s => s.previous ?? BASE_SCORE);
-
   const currentPath = closedDataPath(displayCurrent);
   const prevPath = hasPrevious ? closedDataPath(displayPrev) : '';
 
   return (
     <Svg width={SVG_W} height={SVG_H}>
-      {/* Grid rings at 20/40/60/80/100 */}
+      {/* Grid rings */}
       {[20, 40, 60, 80].map(val => (
         <Path key={val} d={hexPath((val / 100) * R)} fill="none" stroke={GRID_COLOR} strokeWidth={1} />
       ))}
@@ -284,7 +330,7 @@ function HexRadarChart({
         return <Line key={i} x1={CX} y1={CY} x2={pt.x} y2={pt.y} stroke={GRID_COLOR} strokeWidth={1} />;
       })}
 
-      {/* Previous polygon */}
+      {/* Previous polygon (gray dashed) */}
       {prevPath ? (
         <Path d={prevPath} fill={TERRA_PREV} stroke="#bbb" strokeWidth={1.5} strokeDasharray="4,3" />
       ) : null}
@@ -292,30 +338,33 @@ function HexRadarChart({
       {/* Current polygon */}
       <Path d={currentPath} fill={TERRA_FILL} stroke={TERRA} strokeWidth={2.5} />
 
-      {/* Skill labels with score */}
+      {/* Skill labels with score below */}
       {SKILLS.map((name, i) => {
         const a = skillAngle(i);
         const lx = CX + LABEL_R * Math.cos(a);
         const ly = CY + LABEL_R * Math.sin(a);
         const isRated = skillScores[i].rated;
         const align = i === 0 || i === 3 ? 'middle' : i === 1 || i === 2 ? 'start' : 'end';
-        const baseY = i === 0 ? ly - 8 : i === 3 ? ly + 8 : ly + 2;
-        const displayScore = skillScores[i].current ?? BASE_SCORE;
+        const baseY = i === 0 ? ly - 10 : i === 3 ? ly + 8 : ly + 2;
+        const displayScore = isRated ? Math.round(displayCurrent[i]) : BASE_SCORE;
 
         return (
           <G key={i} onPress={() => onSkillPress?.(i)}>
-            <Circle cx={lx} cy={baseY + 4} r={24} fill="transparent" />
-            <SvgText x={lx} y={baseY} textAnchor={align} fontSize={11} fontWeight="600"
-              fill={isRated ? TEXT_PRIMARY : TEXT_MUTED}>
+            <Circle cx={lx} cy={baseY - 2} r={22} fill="transparent" />
+            <SvgText
+              x={lx} y={baseY}
+              textAnchor={align} fontSize={11} fontWeight="600"
+              fill={isRated ? TEXT_PRIMARY : TEXT_MUTED}
+            >
               {name}
             </SvgText>
-            {isRated ? (
-              <SvgText x={lx} y={baseY + 13} textAnchor={align} fontSize={9} fontWeight="600" fill={TERRA}>
-                {displayScore}점
-              </SvgText>
-            ) : (
-              <SvgText x={lx} y={baseY + 13} textAnchor={align} fontSize={9} fill={TEXT_MUTED}>기본 20</SvgText>
-            )}
+            <SvgText
+              x={lx} y={baseY + 14}
+              textAnchor={align} fontSize={9} fontWeight="600"
+              fill={isRated ? TERRA : TEXT_MUTED}
+            >
+              {isRated ? `/ ${displayScore}` : '기본 20'}
+            </SvgText>
           </G>
         );
       })}
@@ -385,6 +434,11 @@ function nextTenPoints(score: number): number | null {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function formatSheetDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
 // ── Skill Detail Sheet ─────────────────────────────────────────
@@ -462,128 +516,147 @@ function SkillDetailSheet({
   );
 }
 
-// ── Detail helpers ─────────────────────────────────────────────
-function formatGroupDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
-}
-
-function getDetailStatusStyle(status: string, delta: number): { label: string; bg: string; text: string } {
-  if (status === 'pending') return { label: '미반영', bg: '#F4F6F9', text: TEXT_MUTED };
-  if (status === 'improved') {
-    const abs = Math.abs(delta);
-    return { label: `향상 +${abs % 1 === 0 ? abs : abs.toFixed(1)}`, bg: '#ECFDF5', text: '#059669' };
-  }
-  if (status === 'needs_work' || status === 'regressed') return { label: '보완 필요', bg: GOAL_BG, text: TERRA };
-  return { label: '유지', bg: '#F4F6F9', text: TEXT_MUTED };
-}
-
-function SkillChangeRowItem({ sc }: { sc: LessonSkillChange }) {
-  const st = getDetailStatusStyle(sc.status, sc.delta);
-  const scoreText = sc.status === 'pending'
-    ? ''
-    : sc.delta === 0
-    ? `변동 없음 · ${sc.scoreBefore} → ${sc.scoreAfter}`
-    : `${sc.scoreBefore} → ${sc.scoreAfter}`;
-
-  return (
-    <View style={dss.skillRow}>
-      <View style={dss.skillRowHeader}>
-        <Text style={dss.skillRowName}>{sc.skill}</Text>
-        <View style={[dss.statusBadge, { backgroundColor: st.bg }]}>
-          <Text style={[dss.statusBadgeText, { color: st.text }]}>{st.label}</Text>
+// ── Changes Bottom Sheet ───────────────────────────────────────
+function ChangeDetailRow({ row, isLast }: { row: SheetSkillRow; isLast: boolean }) {
+  if (row.isPending) {
+    return (
+      <View style={[bsRow.row, !isLast && bsRow.rowBorder]}>
+        <Text style={bsRow.skillLine}>{row.points[0] || '항목'}</Text>
+        <View style={bsRow.pendingBadge}>
+          <Text style={bsRow.pendingText}>미반영</Text>
         </View>
       </View>
-      {scoreText ? <Text style={dss.scoreChange}>{scoreText}</Text> : null}
-      {sc.evaluationItems.map((item, idx) => (
-        <View key={idx} style={dss.evalItem}>
-          <View style={dss.evalItemHeader}>
-            <Text style={dss.evalPoint} numberOfLines={2}>{item.point}</Text>
-            {item.isPending && (
-              <View style={dss.pendingBadge}>
-                <Text style={dss.pendingBadgeText}>미반영</Text>
-              </View>
-            )}
-          </View>
-          {item.reason ? <Text style={dss.evalReason}>{item.reason}</Text> : null}
+    );
+  }
+
+  const isImproved = row.status === 'improved';
+  const isNeedsWork = row.status === 'needs_work' || row.status === 'regressed';
+  const isNeutral = !isImproved && !isNeedsWork;
+  const dStr = formatDelta(row.delta);
+  const statusText = isNeutral ? '유지' : isImproved ? '향상' : '보완 필요';
+  const scoreLine = isNeutral
+    ? `변동 없음 · ${row.before} → ${row.after}`
+    : `${statusText} ${dStr} · ${row.before} → ${row.after}`;
+  const badgeBg = isImproved ? '#ECFDF5' : isNeedsWork ? GOAL_BG : '#F4F6F9';
+  const badgeColor = isImproved ? '#059669' : isNeedsWork ? TERRA : TEXT_MUTED;
+
+  return (
+    <View style={[bsRow.row, !isLast && bsRow.rowBorder]}>
+      <View style={bsRow.skillLine2Row}>
+        {row.skill && <Text style={bsRow.skillName}>{row.skill}</Text>}
+        {row.skill && row.points.length > 0 && <Text style={bsRow.dot}> · </Text>}
+        <Text style={bsRow.skillPoint} numberOfLines={2}>{row.points[0]}</Text>
+      </View>
+
+      <View style={bsRow.scoreRow}>
+        <View style={[bsRow.badge, { backgroundColor: badgeBg }]}>
+          <Text style={[bsRow.badgeText, { color: badgeColor }]}>{statusText}</Text>
         </View>
+        <Text style={bsRow.scoreLine}>{scoreLine}</Text>
+      </View>
+
+      {row.before === BASE_SCORE && row.delta !== 0 && (
+        <Text style={bsRow.baseNote}>기본 20점에서 첫 변화가 반영됐어요</Text>
+      )}
+
+      {row.reasons.map((reason, i) => (
+        <Text key={i} style={bsRow.reason}>{reason}</Text>
       ))}
     </View>
   );
 }
 
-// ── Change Detail Sheet ────────────────────────────────────────
-export function ChangeDetailSheet({
+function ChangesBottomSheet({
   visible,
+  reports,
   onClose,
-  groups,
-  onViewLesson,
 }: {
   visible: boolean;
+  reports: GrowthReport[];
   onClose: () => void;
-  groups: LessonChangeGroup[];
-  onViewLesson: (lessonId: string | null, planId: string) => void;
 }) {
-  const [filter, setFilter] = useState<SkillName | '전체'>('전체');
-  const SKILL_FILTERS: Array<SkillName | '전체'> = ['전체', ...SKILLS];
+  const router = useRouter();
+  const [skillFilter, setSkillFilter] = useState<SkillName | 'all'>('all');
 
-  const filtered = filter === '전체'
-    ? groups
-    : groups.filter(g => g.skillChanges.some(sc => sc.skill === filter));
+  const allGroups = useMemo(() => computeSheetData(reports), [reports]);
+  const groups = useMemo(() => {
+    if (skillFilter === 'all') return allGroups;
+    return allGroups
+      .map(g => ({ ...g, rows: g.rows.filter(r => r.skill === skillFilter) }))
+      .filter(g => g.rows.length > 0);
+  }, [allGroups, skillFilter]);
+
+  if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={dss.backdrop} onPress={onClose}>
-        <Pressable style={dss.container} onPress={() => {}}>
-          <View style={dss.handle} />
-          <Text style={dss.title}>이전 대비 변화</Text>
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <View style={bs.container}>
+        <View style={bs.header}>
+          <Text style={bs.title}>이전 대비 변화</Text>
+          <TouchableOpacity onPress={onClose} style={bs.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={22} color={TEXT_PRIMARY} />
+          </TouchableOpacity>
+        </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={dss.filterScroll}
-            contentContainerStyle={dss.filterContent}
-          >
-            {SKILL_FILTERS.map(skill => (
-              <TouchableOpacity
-                key={skill}
-                style={[dss.chip, filter === skill && dss.chipActive]}
-                onPress={() => setFilter(skill)}
-              >
-                <Text style={[dss.chipText, filter === skill && dss.chipTextActive]}>{skill}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={bs.filterScroll}
+          contentContainerStyle={bs.filterContent}
+        >
+          {SKILL_FILTERS.map(f => (
+            <TouchableOpacity
+              key={f.key}
+              style={[bs.filterTab, skillFilter === f.key && bs.filterTabActive]}
+              onPress={() => setSkillFilter(f.key)}
+            >
+              <Text style={[bs.filterText, skillFilter === f.key && bs.filterTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={dss.scrollView} contentContainerStyle={dss.scrollContent}>
-            {filtered.length === 0 ? (
-              <View style={dss.empty}>
-                <Text style={dss.emptyText}>기록이 없어요</Text>
+        {groups.length === 0 ? (
+          <View style={bs.empty}>
+            <Ionicons name="analytics-outline" size={40} color={DIVIDER} />
+            <Text style={bs.emptyText}>기록이 없어요</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={groups}
+            keyExtractor={g => g.planId}
+            contentContainerStyle={bs.list}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item: group }) => (
+              <View style={bs.groupCard}>
+                <View style={bs.groupDateRow}>
+                  <Text style={bs.groupDate}>{formatSheetDate(group.date)}</Text>
+                  <TouchableOpacity
+                    style={bs.lessonLink}
+                    onPress={() => {
+                      onClose();
+                      if (group.lessonId) {
+                        router.push({ pathname: '/lesson-detail', params: { id: group.lessonId } } as never);
+                      } else {
+                        router.push('/(tabs)/report' as never);
+                      }
+                    }}
+                  >
+                    <Text style={bs.lessonLinkText}>레슨 기록 보기</Text>
+                    <Ionicons name="chevron-forward" size={12} color={TERRA} />
+                  </TouchableOpacity>
+                </View>
+                {group.rows.map((row, i) => (
+                  <ChangeDetailRow key={i} row={row} isLast={i === group.rows.length - 1} />
+                ))}
               </View>
-            ) : (
-              filtered.map((group, gi) => {
-                const visibleChanges = filter === '전체'
-                  ? group.skillChanges
-                  : group.skillChanges.filter(sc => sc.skill === filter);
-
-                return (
-                  <View key={group.planId} style={[dss.group, gi > 0 && dss.groupBorder]}>
-                    <View style={dss.groupHeader}>
-                      <Text style={dss.groupDate}>{formatGroupDate(group.date)}</Text>
-                      <TouchableOpacity onPress={() => { onClose(); onViewLesson(group.lessonId, group.planId); }}>
-                        <Text style={dss.lessonLink}>레슨 기록 보기</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {visibleChanges.map((sc, si) => (
-                      <SkillChangeRowItem key={si} sc={sc} />
-                    ))}
-                  </View>
-                );
-              })
             )}
-          </ScrollView>
-        </Pressable>
-      </Pressable>
+            ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+            ListFooterComponent={<View style={{ height: 60 }} />}
+          />
+        )}
+      </View>
     </Modal>
   );
 }
@@ -681,7 +754,6 @@ export function GrowthBalanceCard({
         onSkillPress={(i) => setSelectedSkillIdx(i)}
       />
 
-      {/* Legend */}
       {hasPrevious && (
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
@@ -703,19 +775,19 @@ export function GrowthBalanceCard({
         </View>
       ) : (
         <View style={styles.scoreList}>
-          {ratedSkills.map((s, idx) => {
+          {skillScores.map((s, skillIdx) => {
             const st = getStatusStyle(s.status);
-            const dStr = formatDelta(s.delta);
-            const toNext = s.delta > 0 && s.current !== null ? nextTenPoints(s.current) : null;
-            const skillIdx = SKILLS.indexOf(s.skill);
+            const dStr = s.rated ? formatDelta(s.delta) : '';
+            const displayScore = s.current ?? BASE_SCORE;
+            const toNext = s.rated && s.delta > 0 && s.current !== null ? nextTenPoints(s.current) : null;
             return (
               <TouchableOpacity
                 key={s.skill}
                 style={styles.scoreListRow}
-                onPress={() => setSelectedSkillIdx(skillIdx >= 0 ? skillIdx : null)}
+                onPress={() => setSelectedSkillIdx(skillIdx)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.scoreListSkill}>{s.skill}</Text>
+                <Text style={[styles.scoreListSkill, !s.rated && { color: TEXT_MUTED }]}>{s.skill}</Text>
                 <View style={styles.scoreListRight}>
                   {dStr ? (
                     <View style={[styles.scoreListBadge, { backgroundColor: st.bg }]}>
@@ -723,7 +795,11 @@ export function GrowthBalanceCard({
                     </View>
                   ) : null}
                   <View>
-                    <Text style={styles.scoreListVal}>현재 {s.current}점</Text>
+                    {s.rated ? (
+                      <Text style={styles.scoreListVal}>현재 {displayScore}점</Text>
+                    ) : (
+                      <Text style={styles.scoreListBase}>기본 20점</Text>
+                    )}
                     {toNext !== null && (
                       <Text style={styles.scoreListHint}>다음 10단위까지 {toNext}점</Text>
                     )}
@@ -732,12 +808,6 @@ export function GrowthBalanceCard({
               </TouchableOpacity>
             );
           })}
-          {ratedCount < 6 && (
-            <View style={styles.unratedHint}>
-              <Ionicons name="ellipsis-horizontal-circle-outline" size={15} color={TEXT_MUTED} />
-              <Text style={styles.unratedHintText}>아직 기록되지 않은 기술 {6 - ratedCount}개 · 기본 20점</Text>
-            </View>
-          )}
         </View>
       )}
 
@@ -758,31 +828,18 @@ export function RecentChangesCard({
   reports: GrowthReport[];
 }) {
   const router = useRouter();
-  const [showDetail, setShowDetail] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
   const shown = changeEvents.slice(0, 3);
 
   if (shown.length === 0) return null;
 
   const latestNextGoals = toLines(reports[0]?.next_goals_raw ?? null);
-  const groups = computeLessonChangeGroups(reports);
 
   return (
     <View style={styles.card}>
-      <ChangeDetailSheet
-        visible={showDetail}
-        onClose={() => setShowDetail(false)}
-        groups={groups}
-        onViewLesson={(lessonId, planId) => {
-          if (lessonId) {
-            router.push({ pathname: '/lesson-detail', params: { id: lessonId } } as never);
-          } else {
-            router.push({ pathname: '/(tabs)/report' } as never);
-          }
-        }}
-      />
       <View style={styles.changeCardHeader}>
         <Text style={styles.cardTitle}>이전 대비 변화</Text>
-        <TouchableOpacity onPress={() => setShowDetail(true)}>
+        <TouchableOpacity onPress={() => setShowSheet(true)}>
           <Text style={styles.seeAllText}>전체 보기 ›</Text>
         </TouchableOpacity>
       </View>
@@ -836,11 +893,17 @@ export function RecentChangesCard({
           <Text style={styles.nextGoalText} numberOfLines={2}>{latestNextGoals[0]}</Text>
         </View>
       )}
+
+      <ChangesBottomSheet
+        visible={showSheet}
+        reports={reports}
+        onClose={() => setShowSheet(false)}
+      />
     </View>
   );
 }
 
-// Legacy export for any older callers
+// Legacy export for older callers
 export function RecentSkillChanges({
   skillScores,
   latestNextGoals,
@@ -896,8 +959,6 @@ export function RecentSkillChanges({
 // ── Insights Card ──────────────────────────────────────────────
 export function InsightsCard({ reports }: { reports: GrowthReport[] }) {
   const recent = reports.slice(0, 5);
-
-  // Collect unique insights from recent reports
   const goodPoints: string[] = [];
   const improvePoints: string[] = [];
   const goals: string[] = [];
@@ -959,37 +1020,24 @@ export function InsightsCard({ reports }: { reports: GrowthReport[] }) {
 // ── Styles ─────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: CARD_WHITE,
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    backgroundColor: CARD_WHITE, borderRadius: 20, padding: 20,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    flexDirection: 'row', alignItems: 'flex-start',
+    justifyContent: 'space-between', marginBottom: 4,
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY },
   progressSmall: { fontSize: 11, fontWeight: '600', color: TEXT_MUTED, marginTop: 2 },
   infoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: BG,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: BG, borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 4,
   },
   infoBtnText: { fontSize: 12, color: TEXT_MUTED, fontWeight: '500' },
-
   emptyChart: { alignItems: 'center', paddingVertical: 16 },
   emptyChartText: { fontSize: 14, color: TEXT_MUTED, textAlign: 'center', lineHeight: 22 },
-
   legendRow: { flexDirection: 'row', gap: 16, justifyContent: 'center', marginTop: 4, marginBottom: 4 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendLineTerra: { width: 20, height: 2.5, backgroundColor: TERRA, borderRadius: 2 },
@@ -998,33 +1046,25 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed', borderWidth: 1, borderColor: '#bbb',
   },
   legendText: { fontSize: 11, color: TEXT_MUTED },
-
   scoreList: { marginTop: 10, gap: 0 },
   scoreListRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 9,
-    borderBottomWidth: 1, borderBottomColor: DIVIDER,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: DIVIDER,
   },
   scoreListSkill: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
   scoreListRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   scoreListBadge: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 },
   scoreListBadgeText: { fontSize: 11, fontWeight: '700' },
   scoreListVal: { fontSize: 13, fontWeight: '700', color: TERRA, textAlign: 'right' },
+  scoreListBase: { fontSize: 12, color: TEXT_MUTED, textAlign: 'right' },
   scoreListHint: { fontSize: 10, color: TEXT_MUTED, textAlign: 'right', marginTop: 1 },
-
-  unratedHint: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginTop: 2 },
-  unratedHintText: { fontSize: 12, color: TEXT_MUTED },
-
   guideRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    marginTop: 14, paddingTop: 12,
-    borderTopWidth: 1, borderTopColor: DIVIDER,
+    marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: DIVIDER,
   },
   guideText: { fontSize: 12, color: TEXT_MUTED },
-
   changeCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  seeAllText: { fontSize: 12, color: TERRA, fontWeight: '600' },
+  seeAllText: { fontSize: 13, color: TERRA, fontWeight: '700' },
   changeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 8 },
   changeRowBorder: { borderBottomWidth: 1, borderBottomColor: DIVIDER },
   changeMain: { flex: 1, gap: 4 },
@@ -1035,18 +1075,11 @@ const styles = StyleSheet.create({
   changeBadgeText: { fontSize: 11, fontWeight: '700' },
   changeReason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 18 },
   motivationText: { fontSize: 12, color: TEXT_MUTED, fontStyle: 'italic' },
-
   nextGoalBox: { backgroundColor: GOAL_BG, borderRadius: 12, padding: 14, marginTop: 12, gap: 6 },
   nextGoalHeader: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   nextGoalTitle: { fontSize: 12, fontWeight: '700', color: TERRA },
   nextGoalText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 21 },
-
-  insightCard: {
-    backgroundColor: GOAL_BG,
-    borderRadius: 20,
-    padding: 20,
-    gap: 0,
-  },
+  insightCard: { backgroundColor: GOAL_BG, borderRadius: 20, padding: 20, gap: 0 },
   insightTitle: { fontSize: 16, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 12 },
   insightSection: { marginBottom: 14 },
   insightSectionHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
@@ -1058,122 +1091,106 @@ const tip = StyleSheet.create({
   backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 },
   bubble: {
     position: 'absolute', top: 56, right: 0,
-    backgroundColor: TEXT_PRIMARY, borderRadius: 12, padding: 14,
-    maxWidth: 260,
+    backgroundColor: TEXT_PRIMARY, borderRadius: 12, padding: 14, maxWidth: 260,
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 }, elevation: 8, zIndex: 20,
   },
   text: { fontSize: 11, color: '#fff', lineHeight: 18 },
   arrow: {
-    position: 'absolute', top: -6, right: 36,
-    width: 0, height: 0,
+    position: 'absolute', top: -6, right: 36, width: 0, height: 0,
     borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 6,
     borderLeftColor: 'transparent', borderRightColor: 'transparent',
     borderBottomColor: TEXT_PRIMARY,
   },
 });
 
-const dss = StyleSheet.create({
+const sheet = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   container: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingTop: 16, paddingBottom: 0,
-    maxHeight: '90%',
-    shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 16,
-    shadowOffset: { width: 0, height: -4 }, elevation: 10,
-  },
-  handle: { width: 40, height: 5, backgroundColor: '#E0E0E0', borderRadius: 3, alignSelf: 'center', marginBottom: 16 },
-  title: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY, paddingHorizontal: 24, marginBottom: 12 },
-
-  filterScroll: { flexGrow: 0, marginBottom: 8 },
-  filterContent: { paddingHorizontal: 24, gap: 8, flexDirection: 'row' },
-  chip: {
-    paddingHorizontal: 14, paddingVertical: 7,
-    backgroundColor: BG, borderRadius: 20,
-    borderWidth: 1, borderColor: DIVIDER,
-  },
-  chipActive: { backgroundColor: TERRA, borderColor: TERRA },
-  chipText: { fontSize: 12, fontWeight: '600', color: TEXT_MUTED },
-  chipTextActive: { color: '#fff' },
-
-  scrollView: { flex: 1 },
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 48, paddingTop: 4 },
-
-  empty: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: { fontSize: 14, color: TEXT_MUTED },
-
-  group: { paddingVertical: 16 },
-  groupBorder: { borderTopWidth: 1, borderTopColor: DIVIDER },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  groupDate: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
-  lessonLink: { fontSize: 12, color: TERRA, fontWeight: '600' },
-
-  skillRow: { backgroundColor: BG, borderRadius: 14, padding: 14, marginBottom: 8 },
-  skillRowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  skillRowName: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
-  statusBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  statusBadgeText: { fontSize: 11, fontWeight: '700' },
-  scoreChange: { fontSize: 12, color: TEXT_MUTED, fontWeight: '500', marginBottom: 8 },
-
-  evalItem: { paddingTop: 8, borderTopWidth: 1, borderTopColor: DIVIDER, marginTop: 4 },
-  evalItemHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
-  evalPoint: { fontSize: 13, fontWeight: '600', color: TEXT_PRIMARY, flex: 1, lineHeight: 20 },
-  evalReason: { fontSize: 12, color: TEXT_MUTED, lineHeight: 18, marginTop: 4 },
-  pendingBadge: { backgroundColor: '#F4F6F9', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  pendingBadgeText: { fontSize: 10, fontWeight: '700', color: TEXT_MUTED },
-});
-
-const sheet = StyleSheet.create({
-  backdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-  container: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 24, paddingBottom: 44,
     shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 16,
     shadowOffset: { width: 0, height: -4 }, elevation: 10,
   },
-  handle: {
-    width: 40, height: 5, backgroundColor: '#E0E0E0',
-    borderRadius: 3, alignSelf: 'center', marginBottom: 20,
-  },
-  headerRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 20,
-  },
+  handle: { width: 40, height: 5, backgroundColor: '#E0E0E0', borderRadius: 3, alignSelf: 'center', marginBottom: 20 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   skillName: { fontSize: 20, fontWeight: '800', color: TEXT_PRIMARY },
   statusBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   statusBadgeText: { fontSize: 12, fontWeight: '700' },
   scoreRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: BG, borderRadius: 14, padding: 16, marginBottom: 10,
   },
   scoreLabel: { fontSize: 14, color: TEXT_MUTED, fontWeight: '500' },
   scoreValue: { fontSize: 24, fontWeight: '800', color: TERRA },
   deltaRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 4, marginBottom: 8,
   },
   deltaLabel: { fontSize: 14, color: TEXT_MUTED },
   deltaValue: { fontSize: 15, fontWeight: '700' },
   nextHint: { fontSize: 12, color: TEXT_MUTED, marginBottom: 14, paddingHorizontal: 4 },
-  reasonBox: {
-    backgroundColor: BG, borderRadius: 12, padding: 14, marginVertical: 10,
-  },
+  reasonBox: { backgroundColor: BG, borderRadius: 12, padding: 14, marginVertical: 10 },
   reasonLabel: { fontSize: 11, fontWeight: '700', color: TEXT_MUTED, marginBottom: 6 },
   reasonText: { fontSize: 14, color: TEXT_PRIMARY, lineHeight: 21 },
-  unratedBox: {
-    backgroundColor: BG, borderRadius: 12, padding: 14, marginVertical: 10,
-  },
+  unratedBox: { backgroundColor: BG, borderRadius: 12, padding: 14, marginVertical: 10 },
   unratedText: { fontSize: 14, color: TEXT_MUTED, lineHeight: 21, textAlign: 'center' },
-  lessonBtn: {
-    backgroundColor: TERRA, borderRadius: 16, padding: 18,
-    alignItems: 'center', marginTop: 16,
-  },
+  lessonBtn: { backgroundColor: TERRA, borderRadius: 16, padding: 18, alignItems: 'center', marginTop: 16 },
   lessonBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});
+
+const bs = StyleSheet.create({
+  container: { flex: 1, backgroundColor: BG },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14,
+    backgroundColor: CARD_WHITE, borderBottomWidth: 1, borderBottomColor: DIVIDER,
+  },
+  title: { fontSize: 18, fontWeight: '800', color: TEXT_PRIMARY },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: BG, alignItems: 'center', justifyContent: 'center' },
+  filterScroll: { flexGrow: 0, backgroundColor: CARD_WHITE },
+  filterContent: { paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', gap: 8 },
+  filterTab: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    backgroundColor: BG, borderRadius: 20, borderWidth: 1, borderColor: DIVIDER,
+  },
+  filterTabActive: { backgroundColor: TERRA, borderColor: TERRA },
+  filterText: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
+  filterTextActive: { color: '#fff' },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  emptyText: { fontSize: 15, color: TEXT_MUTED },
+  list: { paddingHorizontal: 16, paddingTop: 12 },
+  groupCard: {
+    backgroundColor: CARD_WHITE, borderRadius: 16, padding: 16,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
+  groupDateRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: DIVIDER,
+  },
+  groupDate: { fontSize: 13, fontWeight: '800', color: TEXT_PRIMARY },
+  lessonLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  lessonLinkText: { fontSize: 12, fontWeight: '600', color: TERRA },
+});
+
+const bsRow = StyleSheet.create({
+  row: { paddingVertical: 12 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: DIVIDER },
+  skillLine: { fontSize: 14, fontWeight: '600', color: TEXT_MUTED, marginBottom: 4 },
+  skillLine2Row: { flexDirection: 'row', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 6 },
+  skillName: { fontSize: 13, fontWeight: '800', color: TEXT_PRIMARY },
+  dot: { fontSize: 13, color: TEXT_MUTED },
+  skillPoint: { fontSize: 13, color: TEXT_MUTED, flex: 1 },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  scoreLine: { fontSize: 12, fontWeight: '600', color: TEXT_PRIMARY },
+  baseNote: { fontSize: 11, color: TEXT_MUTED, fontStyle: 'italic', marginBottom: 2 },
+  reason: { fontSize: 13, color: TEXT_MUTED, lineHeight: 19, marginTop: 2 },
+  pendingBadge: {
+    alignSelf: 'flex-start', backgroundColor: '#F4F6F9',
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginTop: 4,
+  },
+  pendingText: { fontSize: 11, fontWeight: '700', color: TEXT_MUTED },
 });
