@@ -922,9 +922,6 @@ export default function HomeScreen() {
                     <Text style={styles.briefingDateText}>{lessonDateLabel}</Text>
                   </View>
                   <View style={styles.briefingHeaderRight}>
-                    <View style={styles.coachAvatar}>
-                      <Text style={styles.coachAvatarText}>{coachInitials}</Text>
-                    </View>
                     <Text style={styles.coachNameSmall}>{coachDisplayName} 코치</Text>
                   </View>
                 </View>
