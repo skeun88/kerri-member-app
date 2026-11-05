@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, Modal, ActivityIndicator, TextInput,
-  SafeAreaView, KeyboardAvoidingView, Platform,
+  SafeAreaView, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -588,6 +588,8 @@ function groupPaymentsByMonth(items: Payment[]): { month: string; items: Payment
 // ── 메인 ──────────────────────────────────────────────────
 export default function ScheduleScreen() {
   const [tab, setTab] = useState<MainTab>('schedule');
+  const tabOpacity = useRef(new Animated.Value(1)).current;
+  const tabTranslateY = useRef(new Animated.Value(0)).current;
   const [member, setMember] = useState<MemberInfo | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -671,13 +673,24 @@ export default function ScheduleScreen() {
     const { data: reports } = await supabase.from('member_lesson_reports').select('lesson_date, improvement_points').eq('member_id', mem.id).eq('sent_to_member', true).not('improvement_points', 'is', null).order('lesson_date', { ascending: false });
     setMemberReports(reports ?? []);
 
+    // lesson_id is not in member_lesson_plan_view — do not select it or PostgREST errors
     const { data: planData } = await supabase
       .from('member_lesson_plan_view')
-      .select('id, created_at, lesson_id, lesson_comparison, next_goals, achievements, improvement_points')
+      .select('id, created_at, lesson_comparison, next_goals, achievements, improvement_points')
       .eq('member_id', mem.id)
       .order('created_at', { ascending: false })
       .limit(30);
 
+    // Old sent reports that predate the lesson_plan_id system
+    const { data: oldSentReports } = await supabase
+      .from('member_lesson_reports')
+      .select('id, created_at, achievements, improvement_points')
+      .eq('member_id', mem.id)
+      .is('lesson_plan_id', null)
+      .eq('sent_to_member', true)
+      .order('created_at', { ascending: false });
+
+    const planReports: GrowthReport[] = [];
     if (planData && planData.length > 0) {
       const planIds = planData.map((p: any) => p.id);
       const { data: sentReports } = await supabase
@@ -686,22 +699,35 @@ export default function ScheduleScreen() {
         .in('lesson_plan_id', planIds)
         .eq('sent_to_member', true);
       const sentIds = new Set((sentReports ?? []).map((r: any) => r.lesson_plan_id));
-      setGrowthReports(
-        planData
-          .filter((p: any) => sentIds.has(p.id))
-          .map((p: { id: string; created_at: string; lesson_id?: string | null; lesson_comparison: unknown; next_goals: unknown; achievements: unknown; improvement_points: unknown }) => ({
+      planData
+        .filter((p: any) => sentIds.has(p.id))
+        .forEach((p: { id: string; created_at: string; lesson_comparison: unknown; next_goals: unknown; achievements: unknown; improvement_points: unknown }) => {
+          planReports.push({
             plan_id: p.id,
             created_at: p.created_at,
-            lesson_id: (p.lesson_id as string | null) ?? null,
+            lesson_id: null,
             lesson_comparison: Array.isArray(p.lesson_comparison) ? p.lesson_comparison : null,
             next_goals_raw: (p.next_goals as string[] | string | null) ?? null,
             achievements: Array.isArray(p.achievements) ? p.achievements as string[] : null,
             improvement_points_raw: (p.improvement_points as string[] | string | null) ?? null,
-          }))
-      );
-    } else {
-      setGrowthReports([]);
+          });
+        });
     }
+
+    const oldReports: GrowthReport[] = (oldSentReports ?? []).map((r: any) => ({
+      plan_id: r.id,
+      created_at: r.created_at,
+      lesson_id: null,
+      lesson_comparison: null,
+      next_goals_raw: null,
+      achievements: Array.isArray(r.achievements) ? r.achievements as string[] : null,
+      improvement_points_raw: Array.isArray(r.improvement_points) ? r.improvement_points as string[] : null,
+    }));
+
+    const allReports = [...planReports, ...oldReports].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    setGrowthReports(allReports);
 
     setLoading(false);
   }
@@ -818,6 +844,15 @@ export default function ScheduleScreen() {
   // 가장 최근 완료된 레슨 (지난 레슨 목표)
   const lastPastLesson = lessons.find(l => l.date < today && l.notes);
 
+  useEffect(() => {
+    tabOpacity.setValue(0);
+    tabTranslateY.setValue(8);
+    Animated.parallel([
+      Animated.timing(tabOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(tabTranslateY, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [tab]);
+
   const TABS: [MainTab, string][] = [
     ['schedule', '일정'],
     ['makeup', '보강 신청'],
@@ -864,6 +899,7 @@ export default function ScheduleScreen() {
           />
         }
       >
+        <Animated.View style={{ opacity: tabOpacity, transform: [{ translateY: tabTranslateY }] }}>
         {/* ── 레슨권 요약 카드 (일정 탭) ── */}
         {tab === 'schedule' && member && (
           <View style={s.lessonSummaryCard}>
@@ -1061,6 +1097,7 @@ export default function ScheduleScreen() {
               <GrowthBalanceCard
                 skillScores={skillScores}
                 latestPlanId={latestPlanId}
+                hasReports={growthReports.length > 0}
               />
               <RecentChangesCard
                 changeEvents={changeEvents}
@@ -1072,6 +1109,7 @@ export default function ScheduleScreen() {
         })()}
 
         <View style={{ height: 100 }} />
+        </Animated.View>
       </ScrollView>
 
       {/* ── 결제 상세 모달 ── */}
