@@ -305,6 +305,8 @@ export default function HomeScreen() {
 
   // Notification swipe state
   const [deletingNotifIds, setDeletingNotifIds] = useState<Set<string>>(new Set());
+  const [myHomeReviewId, setMyHomeReviewId] = useState<string | null>(null);
+  const [homeCanReview, setHomeCanReview] = useState(false);
   const notifSwipeableRefs = useRef<Map<string, Swipeable>>(new Map());
   const openNotifSwipeableId = useRef<string | null>(null);
 
@@ -424,6 +426,28 @@ export default function HomeScreen() {
       .eq('member_id', (myMember as MemberInfo).id)
       .eq('is_read', false);
     setUnreadNotifCount(notifUnread ?? 0);
+
+    // Review CTA: check existing review + attendance eligibility
+    if ((myMember as MemberInfo).coach_id) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const [{ data: existingReview }, { count: attendedCount }] = await Promise.all([
+          supabase.from('coach_reviews')
+            .select('id')
+            .eq('coach_id', (myMember as MemberInfo).coach_id)
+            .eq('member_id', authUser.id)
+            .eq('is_deleted', false)
+            .maybeSingle(),
+          supabase.from('attendance')
+            .select('id', { count: 'exact', head: true })
+            .in('lesson_id', lessonIds)
+            .eq('member_id', (myMember as MemberInfo).id)
+            .in('status', ['출석', '지각', '조퇴', 'attended', 'completed']),
+        ]);
+        setMyHomeReviewId(existingReview?.id ?? null);
+        setHomeCanReview((attendedCount ?? 0) >= 1);
+      }
+    }
 
     initialLoaded.current = true;
     setLoading(false);
@@ -1162,6 +1186,21 @@ export default function HomeScreen() {
                   <Text style={styles.coachCardBtnFillText}>프로필 상세 보기</Text>
                 </TouchableOpacity>
               </View>
+              {homeCanReview && (
+                <>
+                  <View style={styles.coachCardDivider} />
+                  <TouchableOpacity
+                    style={styles.coachCardBtnReview}
+                    onPress={() => router.push(`/write-review?coachId=${member!.coach_id}&coachName=${encodeURIComponent(coachProfile.display_name ?? '')}`)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="star-outline" size={15} color={TERRA} />
+                    <Text style={styles.coachCardBtnReviewText}>
+                      {myHomeReviewId ? '내 리뷰 보기' : '리뷰 작성하기'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
         )}
@@ -1590,6 +1629,11 @@ const styles = StyleSheet.create({
     borderRadius: 12, backgroundColor: TERRA,
   },
   coachCardBtnFillText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  coachCardBtnReview: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 13,
+  },
+  coachCardBtnReviewText: { fontSize: 13, fontWeight: '700', color: TERRA },
 
   // Popover overlay
   popoverOverlay: {
