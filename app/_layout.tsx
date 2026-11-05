@@ -142,6 +142,7 @@ useEffect(() => {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="qr-onboarding" />
         <Stack.Screen name="subscription" />
+        <Stack.Screen name="write-review" />
       </Stack>
     </GestureHandlerRootView>
   );
