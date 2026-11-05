@@ -4,7 +4,6 @@ import {
   FlatList, ScrollView,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { GrowthReport, toLines } from './GrowthDashboard';
@@ -32,14 +31,32 @@ const R = 84;
 const SVG_W = 320;
 const SVG_H = 300;
 const LABEL_R = R + 24;
-const SEEN_KEY = '@growth_seen_plans_v2';
-
 const SKILL_FILTERS: Array<{ key: SkillName | 'all'; label: string }> = [
   { key: 'all', label: '전체' },
   ...SKILLS.map(s => ({ key: s as SkillName, label: s })),
 ];
 
 // ── Types ──────────────────────────────────────────────────────
+interface SnapshotChange {
+  skill: SkillName | null;
+  status: string;
+  delta: number;
+  before: number;
+  after: number;
+  point: string;
+  reason?: string;
+  isPending: boolean;
+}
+
+interface SnapshotState {
+  planId: string;
+  date: string;
+  lessonId: string | null;
+  beforeScores: Partial<Record<SkillName, number>>;
+  afterScores: Partial<Record<SkillName, number>>;
+  changes: SnapshotChange[];
+}
+
 export interface SkillScoreResult {
   skill: SkillName;
   current: number | null;
@@ -197,6 +214,49 @@ export function computeChangeEvents(reports: GrowthReport[]): SkillChangeEvent[]
     }
   }
   return events.reverse();
+}
+
+function computeHistorySnapshots(reports: GrowthReport[]): SnapshotState[] {
+  const oldest = [...reports].reverse();
+  const running: Partial<Record<SkillName, number>> = {};
+  const snapshots: SnapshotState[] = [];
+  const knownStatuses = new Set(['improved', 'same', 'maintained', 'needs_work', 'regressed']);
+
+  for (const r of oldest) {
+    const beforeScores = { ...running };
+    const changes: SnapshotChange[] = [];
+
+    if (r.lesson_comparison && r.lesson_comparison.length > 0) {
+      const seenSkill = new Set<SkillName>();
+      for (const c of r.lesson_comparison) {
+        const skill = detectSkill(c as any);
+        const isPending = !c.status || !knownStatuses.has(c.status);
+
+        if (isPending) {
+          changes.push({ skill, status: c.status || 'pending', delta: 0, before: 0, after: 0, point: c.point, reason: (c as any).reason ?? undefined, isPending: true });
+          continue;
+        }
+        if (!skill || seenSkill.has(skill)) continue;
+        seenSkill.add(skill);
+        const before = running[skill] ?? BASE_SCORE;
+        const delta = getDelta(before, c.status);
+        const after = Math.max(0, Math.min(100, before + delta));
+        running[skill] = after;
+        changes.push({ skill, status: c.status, delta, before, after, point: c.point, reason: (c as any).reason ?? undefined, isPending: false });
+      }
+    }
+
+    snapshots.push({
+      planId: r.plan_id,
+      date: r.created_at,
+      lessonId: r.lesson_id ?? null,
+      beforeScores: { ...beforeScores },
+      afterScores: { ...running },
+      changes,
+    });
+  }
+
+  return snapshots.reverse(); // newest first
 }
 
 function computeSheetData(reports: GrowthReport[]): SheetLessonGroup[] {
@@ -363,7 +423,7 @@ function HexRadarChart({
               textAnchor={align} fontSize={9} fontWeight="600"
               fill={isRated ? TERRA : TEXT_MUTED}
             >
-              {isRated ? `/ ${displayScore}` : '기본 20'}
+              {isRated ? `${displayScore}` : '기본 20'}
             </SvgText>
           </G>
         );
@@ -661,70 +721,139 @@ function ChangesBottomSheet({
   );
 }
 
+// ── Snapshot Change Summary ────────────────────────────────────
+function SnapshotChangeSummary({
+  snapshot,
+  onViewLesson,
+}: {
+  snapshot: SnapshotState;
+  onViewLesson: () => void;
+}) {
+  const knownChanges = snapshot.changes.filter(c => c.skill !== null);
+
+  if (knownChanges.length === 0) {
+    return (
+      <View style={styles.snapContainer}>
+        <Text style={styles.snapEmpty}>이 기록에 기술별 비교 데이터가 없어요</Text>
+        <TouchableOpacity style={styles.snapViewBtn} onPress={onViewLesson}>
+          <Text style={styles.snapViewBtnText}>이 레슨 기록 보기</Text>
+          <Ionicons name="chevron-forward" size={12} color={TERRA} />
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.snapContainer}>
+      {knownChanges.map((c, i) => {
+        if (c.isPending) {
+          return (
+            <View key={i} style={[styles.snapRow, i < knownChanges.length - 1 && styles.snapRowBorder]}>
+              <Text style={styles.snapSkill}>{c.skill}</Text>
+              <Text style={styles.snapPending}>미평가 · 판단 보류</Text>
+            </View>
+          );
+        }
+        const isNeutral = c.delta === 0;
+        const isImproved = c.delta > 0;
+        const absD = Math.abs(c.delta);
+        const dStr = absD === 0 ? '' : `${c.delta > 0 ? '+' : '-'}${absD % 1 === 0 ? absD : absD.toFixed(1)}`;
+        const scoreText = isNeutral ? '유지 · 변동 없음' : `${dStr} · ${c.before} → ${c.after}`;
+        const textColor = isImproved ? '#059669' : isNeutral ? TEXT_MUTED : TERRA;
+
+        return (
+          <View key={i} style={[styles.snapRow, i < knownChanges.length - 1 && styles.snapRowBorder]}>
+            <Text style={styles.snapSkill}>{c.skill}</Text>
+            <Text style={[styles.snapChange, { color: textColor }]}>{scoreText}</Text>
+          </View>
+        );
+      })}
+      <TouchableOpacity style={styles.snapViewBtn} onPress={onViewLesson}>
+        <Text style={styles.snapViewBtnText}>이 레슨 기록 보기</Text>
+        <Ionicons name="chevron-forward" size={12} color={TERRA} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ── Growth Balance Card ────────────────────────────────────────
 export function GrowthBalanceCard({
-  skillScores,
-  latestPlanId,
+  reports,
   hasReports = false,
 }: {
-  skillScores: SkillScoreResult[];
-  latestPlanId: string | null;
+  reports: GrowthReport[];
   hasReports?: boolean;
 }) {
   const router = useRouter();
+  const [selectedChipIdx, setSelectedChipIdx] = useState(-1);
   const [animPhase, setAnimPhase] = useState(1);
   const [showInfo, setShowInfo] = useState(false);
   const [selectedSkillIdx, setSelectedSkillIdx] = useState<number | null>(null);
   const animRef = useRef<number | null>(null);
+  const timelineRef = useRef<ScrollView>(null);
+
+  const snapshots = useMemo(() => computeHistorySnapshots(reports), [reports]);
+  const chipItems = useMemo(() => [...snapshots].reverse(), [snapshots]); // oldest first
+
+  const resolvedChipIdx = chipItems.length > 0
+    ? (selectedChipIdx >= 0 && selectedChipIdx < chipItems.length ? selectedChipIdx : chipItems.length - 1)
+    : -1;
+  const selectedSnapshot = chipItems[resolvedChipIdx] ?? null;
+
+  const chipLabels = useMemo(() => {
+    const dateTotals: Record<string, number> = {};
+    for (const s of chipItems) { const dk = s.date.split('T')[0]; dateTotals[dk] = (dateTotals[dk] ?? 0) + 1; }
+    const dateOrders: Record<string, number> = {};
+    return chipItems.map(s => {
+      const dk = s.date.split('T')[0];
+      dateOrders[dk] = (dateOrders[dk] ?? 0) + 1;
+      const d = new Date(s.date);
+      const lbl = `${d.getMonth() + 1}/${d.getDate()}`;
+      return dateTotals[dk] > 1 ? `${lbl} (${dateOrders[dk]})` : lbl;
+    });
+  }, [chipItems]);
+
+  const displaySkillScores: SkillScoreResult[] = useMemo(() => {
+    if (!selectedSnapshot) {
+      return SKILLS.map(skill => ({ skill, current: null, previous: null, delta: 0, rated: false, status: null, reason: null, planId: null, lessonId: null }));
+    }
+    return SKILLS.map(skill => {
+      const after = selectedSnapshot.afterScores[skill] ?? null;
+      const before = selectedSnapshot.beforeScores[skill] ?? null;
+      const delta = after !== null ? (after - (before ?? BASE_SCORE)) : 0;
+      return { skill, current: after, previous: before, delta, rated: after !== null, status: null, reason: null, planId: null, lessonId: null };
+    });
+  }, [selectedSnapshot]);
 
   useEffect(() => {
-    if (!latestPlanId) return;
+    if (chipItems.length === 0) return;
+    if (animRef.current != null) cancelAnimationFrame(animRef.current);
     let cancelled = false;
-
-    AsyncStorage.getItem(SEEN_KEY).then(raw => {
+    setAnimPhase(0);
+    const start = Date.now(), dur = 450;
+    const step = () => {
       if (cancelled) return;
-      const seen: string[] = raw ? JSON.parse(raw) : [];
-      if (seen.includes(latestPlanId)) return;
-
-      setAnimPhase(0);
-      const startTime = Date.now();
-      const duration = 900;
-
-      const step = () => {
-        if (cancelled) return;
-        const elapsed = Date.now() - startTime;
-        const t = Math.min(elapsed / duration, 1);
-        setAnimPhase(1 - Math.pow(1 - t, 3));
-        if (t < 1) {
-          animRef.current = requestAnimationFrame(step);
-        } else {
-          seen.push(latestPlanId);
-          if (seen.length > 150) seen.splice(0, seen.length - 150);
-          AsyncStorage.setItem(SEEN_KEY, JSON.stringify(seen));
-        }
-      };
-      animRef.current = requestAnimationFrame(step);
-    });
-
-    return () => {
-      cancelled = true;
-      if (animRef.current != null) cancelAnimationFrame(animRef.current);
+      const t = Math.min((Date.now() - start) / dur, 1);
+      setAnimPhase(1 - Math.pow(1 - t, 3));
+      if (t < 1) animRef.current = requestAnimationFrame(step);
+      else animRef.current = null;
     };
-  }, [latestPlanId]);
+    animRef.current = requestAnimationFrame(step);
+    return () => { cancelled = true; if (animRef.current != null) cancelAnimationFrame(animRef.current); };
+  }, [resolvedChipIdx]);
 
-  const ratedCount = skillScores.filter(s => s.rated).length;
-  const ratedSkills = skillScores.filter(s => s.rated);
-  const hasPrevious = skillScores.some(s => s.previous !== null);
+  useEffect(() => {
+    if (chipItems.length > 0) {
+      setTimeout(() => timelineRef.current?.scrollToEnd({ animated: false }), 50);
+    }
+  }, [chipItems.length]);
+
+  const hasPrevious = chipItems.length > 0;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View>
-          <Text style={styles.cardTitle}>나의 성장 밸런스</Text>
-          {ratedCount > 0 && ratedCount < 6 && (
-            <Text style={styles.progressSmall}>{ratedCount}/6 기술 기록 완료</Text>
-          )}
-        </View>
+        <Text style={styles.cardTitle}>나의 성장 밸런스</Text>
         <TouchableOpacity
           style={styles.infoBtn}
           onPress={() => setShowInfo(v => !v)}
@@ -736,21 +865,18 @@ export function GrowthBalanceCard({
       </View>
 
       <SkillDetailSheet
-        skillScore={selectedSkillIdx !== null ? skillScores[selectedSkillIdx] : null}
+        skillScore={selectedSkillIdx !== null ? displaySkillScores[selectedSkillIdx] : null}
         onClose={() => setSelectedSkillIdx(null)}
         onViewLesson={(lessonId, planId) => {
-          if (lessonId) {
-            router.push({ pathname: '/lesson-detail', params: { id: lessonId } } as never);
-          } else {
-            router.push({ pathname: '/(tabs)/report' } as never);
-          }
+          if (lessonId) router.push({ pathname: '/lesson-detail', params: { id: lessonId } } as never);
+          else router.push({ pathname: '/(tabs)/report' } as never);
         }}
       />
 
       <ScoreInfoTooltip visible={showInfo} onClose={() => setShowInfo(false)} />
 
       <HexRadarChart
-        skillScores={skillScores}
+        skillScores={displaySkillScores}
         animPhase={animPhase}
         hasPrevious={hasPrevious}
         onSkillPress={(i) => setSelectedSkillIdx(i)}
@@ -760,16 +886,16 @@ export function GrowthBalanceCard({
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
             <View style={styles.legendLineTerra} />
-            <Text style={styles.legendText}>현재</Text>
+            <Text style={styles.legendText}>선택 기록 반영 후</Text>
           </View>
           <View style={styles.legendItem}>
             <View style={styles.legendLinePrev} />
-            <Text style={styles.legendText}>이전</Text>
+            <Text style={styles.legendText}>반영 전</Text>
           </View>
         </View>
       )}
 
-      {ratedCount === 0 ? (
+      {chipItems.length === 0 ? (
         <View style={styles.emptyChart}>
           <Text style={styles.emptyChartText}>
             {hasReports
@@ -778,40 +904,41 @@ export function GrowthBalanceCard({
           </Text>
         </View>
       ) : (
-        <View style={styles.scoreList}>
-          {skillScores.map((s, skillIdx) => {
-            const st = getStatusStyle(s.status);
-            const dStr = s.rated ? formatDelta(s.delta) : '';
-            const displayScore = s.current ?? BASE_SCORE;
-            const toNext = s.rated && s.delta > 0 && s.current !== null ? nextTenPoints(s.current) : null;
-            return (
-              <TouchableOpacity
-                key={s.skill}
-                style={styles.scoreListRow}
-                onPress={() => setSelectedSkillIdx(skillIdx)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.scoreListSkill, !s.rated && { color: TEXT_MUTED }]}>{s.skill}</Text>
-                <View style={styles.scoreListRight}>
-                  {dStr ? (
-                    <View style={[styles.scoreListBadge, { backgroundColor: st.bg }]}>
-                      <Text style={[styles.scoreListBadgeText, { color: st.text }]}>{dStr}</Text>
-                    </View>
-                  ) : null}
-                  <View>
-                    {s.rated ? (
-                      <Text style={styles.scoreListVal}>현재 {displayScore}점</Text>
-                    ) : (
-                      <Text style={styles.scoreListBase}>기본 20점</Text>
-                    )}
-                    {toNext !== null && (
-                      <Text style={styles.scoreListHint}>다음 10단위까지 {toNext}점</Text>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.timelineSection}>
+          <ScrollView
+            ref={timelineRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.timelineContent}
+          >
+            {chipItems.map((s, i) => {
+              const isSelected = i === resolvedChipIdx;
+              return (
+                <TouchableOpacity
+                  key={s.planId}
+                  style={[styles.timelineChip, isSelected && styles.timelineChipActive]}
+                  onPress={() => setSelectedChipIdx(i)}
+                >
+                  <Text style={[styles.timelineChipText, isSelected && styles.timelineChipTextActive]}>
+                    {chipLabels[i]}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {selectedSnapshot && (
+            <SnapshotChangeSummary
+              snapshot={selectedSnapshot}
+              onViewLesson={() => {
+                if (selectedSnapshot.lessonId) {
+                  router.push({ pathname: '/lesson-detail', params: { id: selectedSnapshot.lessonId } } as never);
+                } else {
+                  router.push('/(tabs)/report' as never);
+                }
+              }}
+            />
+          )}
         </View>
       )}
 
@@ -1067,6 +1194,30 @@ const styles = StyleSheet.create({
     marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: DIVIDER,
   },
   guideText: { fontSize: 12, color: TEXT_MUTED },
+  timelineSection: { marginTop: 10 },
+  timelineContent: { paddingVertical: 4, gap: 8, flexDirection: 'row' },
+  timelineChip: {
+    paddingHorizontal: 14, paddingVertical: 7,
+    backgroundColor: BG, borderRadius: 20,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
+  timelineChipActive: { backgroundColor: TERRA, borderColor: TERRA },
+  timelineChipText: { fontSize: 13, fontWeight: '600', color: TEXT_MUTED },
+  timelineChipTextActive: { color: '#fff' },
+  snapContainer: { marginTop: 10, backgroundColor: BG, borderRadius: 14, padding: 14 },
+  snapEmpty: { fontSize: 13, color: TEXT_MUTED, textAlign: 'center', paddingVertical: 8 },
+  snapRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
+  snapRowBorder: { borderBottomWidth: 1, borderBottomColor: DIVIDER },
+  snapSkill: { fontSize: 14, fontWeight: '700', color: TEXT_PRIMARY },
+  snapChange: { fontSize: 13, fontWeight: '600' },
+  snapPending: { fontSize: 13, color: TEXT_MUTED, fontStyle: 'italic' },
+  snapViewBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, marginTop: 10, paddingVertical: 10,
+    backgroundColor: CARD_WHITE, borderRadius: 10,
+    borderWidth: 1, borderColor: DIVIDER,
+  },
+  snapViewBtnText: { fontSize: 13, fontWeight: '600', color: TERRA },
   changeCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   seeAllText: { fontSize: 13, color: TERRA, fontWeight: '700' },
   changeRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 8 },

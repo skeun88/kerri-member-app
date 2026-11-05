@@ -15,7 +15,7 @@ import {
   GrowthReport,
 } from '../../components/GrowthDashboard';
 import {
-  computeSkillScores, computeChangeEvents, GrowthBalanceCard, RecentChangesCard, InsightsCard,
+  computeChangeEvents, GrowthBalanceCard, RecentChangesCard, InsightsCard,
 } from '../../components/GrowthRadar';
 
 // ── Design tokens (홈 화면과 동일 팔레트) ──────────────────────
@@ -1089,14 +1089,11 @@ export default function ScheduleScreen() {
 
         {/* ── 성장 기록 탭 ── */}
         {tab === 'report' && (() => {
-          const skillScores = computeSkillScores(growthReports);
-          const latestPlanId = growthReports[0]?.plan_id ?? null;
           const changeEvents = computeChangeEvents(growthReports);
           return (
             <View style={{ padding: 20, gap: 12 }}>
               <GrowthBalanceCard
-                skillScores={skillScores}
-                latestPlanId={latestPlanId}
+                reports={growthReports}
                 hasReports={growthReports.length > 0}
               />
               <RecentChangesCard
