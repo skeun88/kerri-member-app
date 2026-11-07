@@ -356,13 +356,15 @@ export default function HomeScreen() {
       setLatestReport(null);
     }
 
-    // AI consent
+    // AI consent — agreed 없으면 pending/신규 모두 배너 표시
     const { data: agreed } = await supabase.from('ai_consents').select('id')
       .eq('member_id', (myMember as MemberInfo).id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
     if (!agreed) {
-      const { data: pending } = await supabase.from('ai_consents').select('id')
-        .eq('member_id', (myMember as MemberInfo).id).eq('consent_type', 'member').eq('consent_status', 'pending').maybeSingle();
-      setHasPendingConsent(!!pending);
+      setHasPendingConsent(true);
+      // 최초 진입 시 동의 화면으로 자동 이동
+      if (!initialLoaded.current) {
+        router.push('/consent/ai-consent' as any);
+      }
     } else {
       setHasPendingConsent(false);
     }
