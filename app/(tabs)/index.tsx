@@ -363,9 +363,6 @@ export default function HomeScreen() {
       .eq('member_id', (myMember as MemberInfo).id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
     if (!agreed) {
       setHasPendingConsent(true);
-      if (!initialLoaded.current) {
-        setShowConsentModal(true);
-      }
     } else {
       setHasPendingConsent(false);
     }

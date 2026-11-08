@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Modal, Alert, SafeAreaView,
@@ -14,6 +14,7 @@ import {
 import { IS_BETA } from '../../lib/beta';
 import { ReportSkeleton, FadeInView } from '../../components/Skeleton';
 import { LessonComparison, toLines, formatDate } from '../../components/GrowthDashboard';
+import AiConsentScreen from '../consent/ai-consent';
 
 // ── Design tokens ──────────────────────────────────────────────
 const BG = '#F7F7F5';
@@ -106,10 +107,24 @@ export default function ReportScreen() {
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [pendingUnlockId, setPendingUnlockId] = useState<string | null>(null);
   const [memberIdForRt, setMemberIdForRt] = useState<string | null>(null);
+  const [hasConsent, setHasConsent] = useState<boolean | null>(null);
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const consentChecked = useRef(false);
 
   async function loadData() {
     const member = await getMyMemberRow();
     if (!member) { setLoading(false); return; }
+
+    // 동의 체크 — 최초 탭 접근 시 미동의면 모달 표시
+    const { data: agreed } = await supabase.from('ai_consents').select('id')
+      .eq('member_id', member.id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
+    const consentOk = !!agreed;
+    setHasConsent(consentOk);
+    if (!consentOk && !consentChecked.current) {
+      setShowConsentModal(true);
+    }
+    consentChecked.current = true;
+    if (!consentOk) { setLoading(false); return; }
     setMemberIdForRt(member.id);
 
     const [{ data: planData }, { data: allSentReports }, credit] = await Promise.all([
@@ -288,6 +303,23 @@ export default function ReportScreen() {
   return (
     <FadeInView>
     <View style={styles.container}>
+      {/* AI 동의 모달 */}
+      <Modal
+        visible={showConsentModal}
+        animationType="slide"
+        onRequestClose={() => setShowConsentModal(false)}
+      >
+        <AiConsentScreen
+          onComplete={() => {
+            setShowConsentModal(false);
+            setHasConsent(true);
+            consentChecked.current = true;
+            loadData();
+          }}
+          onDecline={() => setShowConsentModal(false)}
+        />
+      </Modal>
+
       <ChargeModal
         visible={showChargeModal && !IS_BETA}
         creditInfo={creditInfo}
@@ -319,6 +351,22 @@ export default function ReportScreen() {
         </View>
       )}
 
+      {hasConsent === false ? (
+        <View style={styles.consentGate}>
+          <Ionicons name="sparkles-outline" size={48} color={TERRA} />
+          <Text style={styles.consentGateTitle}>AI 레슨 기록 동의가 필요해요</Text>
+          <Text style={styles.consentGateSub}>
+            동의하면 코치님이 보내주는{'\n'}AI 레슨 기록을 여기서 볼 수 있어요
+          </Text>
+          <TouchableOpacity
+            style={styles.consentGateBtn}
+            onPress={() => setShowConsentModal(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.consentGateBtnText}>동의하고 레슨 기록 받기</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -532,6 +580,7 @@ export default function ReportScreen() {
           </View>
         )}
       </ScrollView>
+      )}
     </View>
     </FadeInView>
   );
@@ -555,6 +604,23 @@ const cs = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
+
+  consentGate: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 32, paddingBottom: 60, gap: 12,
+  },
+  consentGateTitle: {
+    fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY,
+    textAlign: 'center', marginTop: 8,
+  },
+  consentGateSub: {
+    fontSize: 14, color: TEXT_MUTED, textAlign: 'center', lineHeight: 22,
+  },
+  consentGateBtn: {
+    marginTop: 8, backgroundColor: TERRA, borderRadius: 16,
+    paddingVertical: 14, paddingHorizontal: 28,
+  },
+  consentGateBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   headerSafe: { backgroundColor: BG },
   header: {
