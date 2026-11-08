@@ -11,6 +11,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
 import { HomeSkeleton, FadeInView } from '../../components/Skeleton';
+import AiConsentScreen from '../consent/ai-consent';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -220,6 +221,7 @@ export default function HomeScreen() {
   const [paymentAlert, setPaymentAlert] = useState<PaymentAlert | null>(null);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [hasPendingConsent, setHasPendingConsent] = useState(false);
+  const [showConsentModal, setShowConsentModal] = useState(false);
   const [reportCount, setReportCount] = useState(0);
   const [latestReport, setLatestReport] = useState<LatestReport | null>(null);
   const [briefingExpanded, setBriefingExpanded] = useState(false);
@@ -356,14 +358,13 @@ export default function HomeScreen() {
       setLatestReport(null);
     }
 
-    // AI consent — agreed 없으면 pending/신규 모두 배너 표시
+    // AI consent — agreed 없으면 최초 진입 시 모달로 표시
     const { data: agreed } = await supabase.from('ai_consents').select('id')
       .eq('member_id', (myMember as MemberInfo).id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
     if (!agreed) {
       setHasPendingConsent(true);
-      // 최초 진입 시 동의 화면으로 자동 이동
       if (!initialLoaded.current) {
-        router.push('/consent/ai-consent' as any);
+        setShowConsentModal(true);
       }
     } else {
       setHasPendingConsent(false);
@@ -750,21 +751,6 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Banners ───────────────────────────────────────────── */}
-        {hasPendingConsent && (
-          <TouchableOpacity
-            style={styles.consentBanner}
-            onPress={() => router.push('/consent/ai-consent' as any)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="sparkles-outline" size={18} color={TERRA} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.bannerTitle}>AI 레슨 기록 동의가 필요해요</Text>
-              <Text style={styles.bannerSub}>탭해서 동의하면 코치님의 AI 레슨 기록을 받을 수 있어요</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={14} color={TERRA} />
-          </TouchableOpacity>
-        )}
-
         {paymentAlert && (() => {
           const dday = getDDay(paymentAlert.due_date);
           return (
@@ -1312,6 +1298,18 @@ export default function HomeScreen() {
         </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
+
+    {/* AI 동의 모달 — 최초 로그인 시 표시 */}
+    <Modal
+      visible={showConsentModal}
+      animationType="slide"
+      onRequestClose={() => setShowConsentModal(false)}
+    >
+      <AiConsentScreen
+        onComplete={() => { setShowConsentModal(false); setHasPendingConsent(false); }}
+        onDecline={() => setShowConsentModal(false)}
+      />
+    </Modal>
     </FadeInView>
   );
 }

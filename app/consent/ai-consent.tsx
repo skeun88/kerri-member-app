@@ -18,7 +18,12 @@ const INFO_ITEMS = [
   { icon: 'trash-outline' as const, text: '원본 음성은 처리 후 최대 7일 이내 삭제돼요' },
 ];
 
-export default function AiConsentScreen() {
+interface AiConsentScreenProps {
+  onComplete?: () => void;
+  onDecline?: () => void;
+}
+
+export default function AiConsentScreen({ onComplete, onDecline }: AiConsentScreenProps = {}) {
   const router = useRouter();
   const [isMinor, setIsMinor] = useState<boolean | null>(null);
   const [check1, setCheck1] = useState(false);
@@ -27,6 +32,11 @@ export default function AiConsentScreen() {
   const [loading, setLoading] = useState(false);
 
   const canAgree = check1 && check2 && isMinor === false;
+
+  function handleClose() {
+    if (onDecline) onDecline();
+    else router.back();
+  }
 
   async function handleAgree() {
     if (!canAgree || loading) return;
@@ -57,7 +67,7 @@ export default function AiConsentScreen() {
       Alert.alert(
         '동의가 완료됐어요',
         '이제 코치님의 AI 레슨 기록을 받아볼 수 있어요.',
-        [{ text: '확인', onPress: () => router.back() }],
+        [{ text: '확인', onPress: () => { if (onComplete) onComplete(); else router.back(); } }],
       );
     } catch (e: any) {
       Alert.alert('오류', e.message || '동의 처리 중 오류가 발생했습니다.');
@@ -67,6 +77,7 @@ export default function AiConsentScreen() {
   }
 
   function handleMinorSelected() {
+    if (onDecline) onDecline();
     router.push('/consent/guardian-consent' as any);
   }
 
@@ -75,7 +86,7 @@ export default function AiConsentScreen() {
       <SafeAreaView style={styles.container}>
         {/* 헤더 */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={handleClose} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={Colors.foreground} />
           </TouchableOpacity>
         </View>
@@ -154,7 +165,7 @@ export default function AiConsentScreen() {
               {loading ? '처리 중...' : '동의하고 계속하기'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.declineBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.declineBtn} onPress={handleClose} activeOpacity={0.7}>
             <Text style={styles.declineBtnText}>동의하지 않기</Text>
           </TouchableOpacity>
         </View>
