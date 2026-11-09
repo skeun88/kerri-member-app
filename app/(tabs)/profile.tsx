@@ -301,7 +301,7 @@ export default function ProfileScreen() {
           <MenuRow
             icon="mic-outline"
             label="AI 음성 분석 동의 관리"
-            onPress={() => router.push('/consent/ai-consent')}
+            onPress={() => router.push('/settings/ai-consent')}
             isLast
           />
         </View>

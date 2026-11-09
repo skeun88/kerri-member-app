@@ -111,19 +111,26 @@ export default function ReportScreen() {
   const [showConsentModal, setShowConsentModal] = useState(false);
   const consentChecked = useRef(false);
 
-  async function loadData() {
+  async function loadData(skipConsentCheck = false) {
     const member = await getMyMemberRow();
-    if (!member) { setLoading(false); return; }
-
-    // 동의 체크 — 최초 탭 접근 시 미동의면 모달 표시
-    const { data: agreed } = await supabase.from('ai_consents').select('id')
-      .eq('member_id', member.id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
-    const consentOk = !!agreed;
-    setHasConsent(consentOk);
-    if (!consentOk && !consentChecked.current) {
-      setShowConsentModal(true);
+    if (!member) {
+      setLoading(false);
+      // member row 아직 없으면 consent 체크 스킵하되 consentChecked는 건드리지 않음
+      return;
     }
-    consentChecked.current = true;
+
+    let consentOk = skipConsentCheck;
+    if (!skipConsentCheck) {
+      // 동의 체크 — 최초 탭 접근 시 미동의면 모달 표시
+      const { data: agreed } = await supabase.from('ai_consents').select('id')
+        .eq('member_id', member.id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
+      consentOk = !!agreed;
+      setHasConsent(consentOk);
+      if (!consentOk && !consentChecked.current) {
+        setShowConsentModal(true);
+      }
+      consentChecked.current = true;
+    }
     if (!consentOk) { setLoading(false); return; }
     setMemberIdForRt(member.id);
 
@@ -314,7 +321,7 @@ export default function ReportScreen() {
             setShowConsentModal(false);
             setHasConsent(true);
             consentChecked.current = true;
-            loadData();
+            loadData(true); // 동의 완료 직후엔 DB 타이밍 이슈로 consent 재조회 스킵
           }}
           onDecline={() => setShowConsentModal(false)}
         />
