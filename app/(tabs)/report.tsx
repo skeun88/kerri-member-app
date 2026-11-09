@@ -1,17 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Modal, Alert, SafeAreaView,
+  RefreshControl, Modal, SafeAreaView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, getMyMemberRow } from '../../lib/supabase';
-import {
-  getMyCreditInfo, unlockReport,
-  REPORT_CREDIT_COST, CreditInfo,
-} from '../../lib/reportCredits';
-import { IS_BETA } from '../../lib/beta';
 import { ReportSkeleton, FadeInView } from '../../components/Skeleton';
 import { LessonComparison, toLines, formatDate } from '../../components/GrowthDashboard';
 import AiConsentScreen from '../consent/ai-consent';
@@ -57,55 +51,14 @@ function SectionHead({ icon, title }: { icon: string; title: string }) {
   );
 }
 
-// ── Charge modal ───────────────────────────────────────────────
-function ChargeModal({
-  visible, creditInfo, onClose,
-}: { visible: boolean; creditInfo: CreditInfo; onClose: () => void }) {
-  const router = useRouter();
-  const handleCharge = () => {
-    onClose();
-    router.push({ pathname: '/credit-charge' });
-  };
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={cs.overlay}>
-        <View style={cs.sheet}>
-          <View style={cs.handle} />
-          <View style={cs.balanceRow}>
-            <Text style={cs.balanceLabel}>현재 잔액</Text>
-            <Text style={cs.balanceAmount}>{creditInfo.balance.toLocaleString()}원</Text>
-          </View>
-          <Text style={cs.sheetTitle}>크레딧 충전</Text>
-          <Text style={cs.sheetSub}>리포트 1건당 {REPORT_CREDIT_COST.toLocaleString()}원</Text>
-          <TouchableOpacity style={cs.chargeBtn} onPress={handleCharge}>
-            <Ionicons name="bag-handle-outline" size={20} color="#fff" />
-            <Text style={cs.chargeBtnText}>인앱결제로 충전하기</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={cs.cancelBtn} onPress={onClose}>
-            <Text style={cs.cancelBtnText}>취소</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 // ── Main screen ────────────────────────────────────────────────
 export default function ReportScreen() {
-  const router = useRouter();
-  const { charged } = useLocalSearchParams<{ charged?: string }>();
   const [reports, setReports] = useState<CoachReport[]>([]);
-  const [creditInfo, setCreditInfo] = useState<CreditInfo>({
-    balance: 0, total_charged: 0, total_used: 0, free_report_used: false,
-  });
   const [coachName, setCoachName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedSummaries, setExpandedSummaries] = useState<Set<string>>(new Set());
-  const [unlockingId, setUnlockingId] = useState<string | null>(null);
-  const [showChargeModal, setShowChargeModal] = useState(false);
-  const [pendingUnlockId, setPendingUnlockId] = useState<string | null>(null);
   const [memberIdForRt, setMemberIdForRt] = useState<string | null>(null);
   const [hasConsent, setHasConsent] = useState<boolean | null>(null);
   const [showConsentModal, setShowConsentModal] = useState(false);
@@ -134,7 +87,7 @@ export default function ReportScreen() {
     if (!consentOk) { setLoading(false); return; }
     setMemberIdForRt(member.id);
 
-    const [{ data: planData }, { data: allSentReports }, credit] = await Promise.all([
+    const [{ data: planData }, { data: allSentReports }] = await Promise.all([
       supabase
         .from('member_lesson_plan_view')
         .select('id, member_id, created_at, summary, achievements, improvement_points, next_goals, court_type, session_goals, ai_title, duration_minutes, lesson_comparison')
@@ -148,10 +101,7 @@ export default function ReportScreen() {
         .eq('member_id', member.id)
         .eq('sent_to_member', true)
         .order('created_at', { ascending: true }),
-      getMyCreditInfo(),
     ]);
-
-    setCreditInfo(credit);
 
     if (!planData || planData.length === 0) {
       setReports([]);
@@ -226,35 +176,9 @@ export default function ReportScreen() {
     setReports(prev => prev.map(r => r.report_id === reportId ? { ...r, is_read: true } : r));
   }
 
-  async function handleOpen(report: CoachReport) {
-    if (IS_BETA || report.credit_unlocked) {
-      setExpandedId(prev => prev === report.plan_id ? null : report.plan_id);
-      if (!report.is_read && report.report_id) markRead(report.report_id);
-      return;
-    }
-
-    if (!report.report_id) {
-      Alert.alert('오류', '리포트 정보를 불러올 수 없습니다.');
-      return;
-    }
-
-    setUnlockingId(report.plan_id);
-    const result = await unlockReport(report.report_id);
-    setUnlockingId(null);
-
-    if (result.success) {
-      const credit = await getMyCreditInfo();
-      setCreditInfo(credit);
-      setReports(prev => prev.map(r =>
-        r.plan_id === report.plan_id ? { ...r, credit_unlocked: true, is_read: true } : r
-      ));
-      setExpandedId(report.plan_id);
-    } else if (result.reason === 'insufficient_credit') {
-      setPendingUnlockId(report.plan_id);
-      setShowChargeModal(true);
-    } else {
-      Alert.alert('오류', result.error || '리포트를 열 수 없습니다.');
-    }
+  function handleOpen(report: CoachReport) {
+    setExpandedId(prev => prev === report.plan_id ? null : report.plan_id);
+    if (!report.is_read && report.report_id) markRead(report.report_id);
   }
 
   function toggleSummary(planId: string) {
@@ -265,31 +189,6 @@ export default function ReportScreen() {
       return next;
     });
   }
-
-  useEffect(() => {
-    if (!charged) return;
-    const newBalance = parseInt(charged, 10);
-    setCreditInfo(prev => ({ ...prev, balance: newBalance }));
-    if (pendingUnlockId) {
-      const targetId = pendingUnlockId;
-      setPendingUnlockId(null);
-      (async () => {
-        const target = reports.find(r => r.plan_id === targetId);
-        if (!target?.report_id) return;
-        setUnlockingId(targetId);
-        const result = await unlockReport(target.report_id);
-        setUnlockingId(null);
-        if (result.success) {
-          const credit = await getMyCreditInfo();
-          setCreditInfo(credit);
-          setReports(prev => prev.map(r =>
-            r.plan_id === targetId ? { ...r, credit_unlocked: true, is_read: true } : r
-          ));
-          setExpandedId(targetId);
-        }
-      })();
-    }
-  }, [charged]);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -327,36 +226,14 @@ export default function ReportScreen() {
         />
       </Modal>
 
-      <ChargeModal
-        visible={showChargeModal && !IS_BETA}
-        creditInfo={creditInfo}
-        onClose={() => { setShowChargeModal(false); setPendingUnlockId(null); }}
-      />
-
       <SafeAreaView style={styles.headerSafe}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>레슨 기록</Text>
             <Text style={styles.headerSub}>코치와 함께 쌓아가는 나의 변화</Text>
           </View>
-          {!IS_BETA && (
-            <TouchableOpacity style={styles.creditChip} onPress={() => setShowChargeModal(true)}>
-              <Ionicons name="wallet-outline" size={14} color={TERRA} />
-              <Text style={styles.creditChipText}>{creditInfo.balance.toLocaleString()}원</Text>
-              <Ionicons name="add" size={14} color={TERRA} />
-            </TouchableOpacity>
-          )}
         </View>
       </SafeAreaView>
-
-      {!creditInfo.free_report_used && reports.length > 0 && (
-        <View style={styles.freeBanner}>
-          <Ionicons name="gift-outline" size={15} color={TERRA} />
-          <Text style={styles.freeBannerText}>
-            첫 레슨 기록 <Text style={{ fontWeight: '700' }}>무료 체험</Text> — 지금 바로 열어보세요!
-          </Text>
-        </View>
-      )}
 
       {hasConsent === false ? (
         <View style={styles.consentGate}>
@@ -394,7 +271,7 @@ export default function ReportScreen() {
         ) : (
           <View style={styles.list}>
             {reports.map((report) => {
-              const isUnlocked = IS_BETA || report.credit_unlocked;
+              const isUnlocked = true;
               const isExpanded = expandedId === report.plan_id;
               const isSummaryExpanded = expandedSummaries.has(report.plan_id);
               const achievements = report.achievements ?? [];
@@ -411,7 +288,6 @@ export default function ReportScreen() {
                   ]}
                   onPress={() => handleOpen(report)}
                   activeOpacity={0.85}
-                  disabled={unlockingId === report.plan_id}
                 >
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
@@ -444,29 +320,16 @@ export default function ReportScreen() {
                         <>
                           <View style={styles.cardMetaDivider} />
                           <Text style={styles.cardPreview} numberOfLines={2}>
-                            {isUnlocked
-                              ? (report.summary || '')
-                              : '레슨 기록을 열어보려면 탭하세요'}
+                            {report.summary || ''}
                           </Text>
                         </>
                       )}
                     </View>
 
-                    {unlockingId === report.plan_id ? (
-                      <ActivityIndicator size="small" color={TERRA} />
-                    ) : isUnlocked ? (
-                      <Ionicons
-                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={20} color={TEXT_MUTED}
-                      />
-                    ) : (
-                      <View style={styles.lockBadge}>
-                        <Ionicons name="lock-closed" size={13} color={TERRA} />
-                        <Text style={styles.lockBadgeText}>
-                          {creditInfo.free_report_used ? `${REPORT_CREDIT_COST.toLocaleString()}원` : '무료'}
-                        </Text>
-                      </View>
-                    )}
+                    <Ionicons
+                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={20} color={TEXT_MUTED}
+                    />
                   </View>
 
                   {isExpanded && isUnlocked && (
