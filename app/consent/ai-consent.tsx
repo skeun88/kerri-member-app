@@ -54,7 +54,7 @@ export default function AiConsentScreen({ onComplete, onDecline }: AiConsentScre
 
       if (!member) throw new Error('회원 정보를 찾을 수 없습니다.');
 
-      await supabase.from('ai_consents').insert({
+      const { error: insertError } = await supabase.from('ai_consents').insert({
         member_id: member.id,
         consent_type: 'member',
         consent_status: 'agreed',
@@ -63,6 +63,7 @@ export default function AiConsentScreen({ onComplete, onDecline }: AiConsentScre
         agreed_at: new Date().toISOString(),
         is_minor: false,
       });
+      if (insertError) throw insertError;
 
       Alert.alert(
         '동의가 완료됐어요',

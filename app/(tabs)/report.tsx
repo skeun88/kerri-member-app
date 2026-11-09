@@ -76,7 +76,7 @@ export default function ReportScreen() {
     if (!skipConsentCheck) {
       // 동의 체크 — 최초 탭 접근 시 미동의면 모달 표시
       const { data: agreed } = await supabase.from('ai_consents').select('id')
-        .eq('member_id', member.id).eq('consent_type', 'member').eq('consent_status', 'agreed').maybeSingle();
+        .eq('member_id', member.id).eq('consent_type', 'member').eq('consent_status', 'agreed').limit(1).maybeSingle();
       consentOk = !!agreed;
       setHasConsent(consentOk);
       if (!consentOk && !consentChecked.current) {
