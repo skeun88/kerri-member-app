@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { registerMemberPushToken } from '../lib/notifications';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { configureRevenueCat } from '../lib/revenueCat';
+import * as Notifications from 'expo-notifications';
 
 export default function RootLayout() {
   const [session, setSession] = useState<Session | null>(null);
@@ -85,6 +86,23 @@ useEffect(() => {
     if (!session) return;
     registerMemberPushToken().catch(e => console.error('[PUSH] 등록 실패:', e));
   }, [session]);
+
+  // 푸시 알림 탭 → 화면 이동 (앱이 백그라운드/종료 상태에서 열릴 때)
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const screen = data?.screen as string | undefined;
+      if (!screen) return;
+      switch (screen) {
+        case 'schedule':  router.push('/(tabs)/schedule'); break;
+        case 'report':    router.push('/(tabs)/report');   break;
+        case 'chat':      router.push('/coach-chat');      break;
+        case 'notifications': router.push('/notifications'); break;
+        default: break;
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   async function checkOnboarding() {
     setOnboardingChecked(true);

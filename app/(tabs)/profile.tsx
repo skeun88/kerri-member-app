@@ -286,7 +286,7 @@ export default function ProfileScreen() {
           <MenuRow
             icon="notifications-outline"
             label="알림 설정"
-            onPress={() => router.push('/notifications')}
+            onPress={() => router.push('/settings/notifications')}
           />
           <MenuRow
             icon="document-text-outline"
