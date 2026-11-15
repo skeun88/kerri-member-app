@@ -14,11 +14,43 @@ import { notifyCoachMessage } from '../lib/notifications';
 
 interface Msg {
   id: string;
-  sender_type: 'coach' | 'member';
+  sender_type: 'coach' | 'member' | 'system';
   content: string;
   created_at: string;
   read_at: string | null;
 }
+
+type BoganStatus = 'pending' | 'accepted' | 'rejected';
+
+interface BoganPayload {
+  _kerri: 'bogan';
+  status: BoganStatus;
+  date: string;
+  time: string;
+  rid: string;
+  reason?: string | null;
+}
+
+function parseBoganMsg(content: string): BoganPayload | null {
+  try {
+    const p = JSON.parse(content);
+    if (p?._kerri === 'bogan') return p as BoganPayload;
+  } catch {}
+  // 구버전 텍스트 패턴 대응
+  const acceptedMatch = content.match(/^✅ (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) 보강 레슨이 확정됐습니다/);
+  if (acceptedMatch) return { _kerri: 'bogan', status: 'accepted', date: acceptedMatch[1], time: acceptedMatch[2], rid: '' };
+  if (/^❌.*보강 레슨 요청이 거절됐습니다/.test(content)) {
+    const lines = content.split('\n');
+    return { _kerri: 'bogan', status: 'rejected', date: '', time: '', rid: '', reason: lines.slice(1).join('\n') || null };
+  }
+  return null;
+}
+
+const BOGAN_CFG: Record<BoganStatus, { color: string; badge: string; title: string; cta: string }> = {
+  pending:  { color: '#C0755A', badge: '신청 대기',  title: '보강 신청',      cta: '신청 내역 확인' },
+  accepted: { color: '#32865C', badge: '보강 확정',  title: '보강 레슨 확정!', cta: '레슨 일정 확인하기' },
+  rejected: { color: '#B65C52', badge: '신청 거절',  title: '보강 신청 거절',  cta: '다른 시간 신청하기' },
+};
 
 function fmt(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
@@ -112,14 +144,53 @@ export default function CoachChatScreen() {
   }
 
   function renderMsg({ item, index }: { item: Msg; index: number }) {
-    const isMe = item.sender_type === 'member';
     const prev = index > 0 ? msgs[index - 1] : null;
     const showDate = !prev || fmtDate(item.created_at) !== fmtDate(prev.created_at);
+    const dateDivider = showDate ? (
+      <View style={s.dateDivider}><Text style={s.dateText}>{fmtDate(item.created_at)}</Text></View>
+    ) : null;
+
+    // 시스템 카드 (보강 신청)
+    const bogan = parseBoganMsg(item.content);
+    if (item.sender_type === 'system' || (item.sender_type === 'coach' && bogan)) {
+      if (!bogan) return null;
+      const cfg = BOGAN_CFG[bogan.status];
+      const dateLabel = bogan.date
+        ? new Date(bogan.date).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
+        : '';
+      return (
+        <>
+          {dateDivider}
+          <View style={s.cardWrap}>
+            <View style={[s.card, { borderTopColor: cfg.color }]}>
+              <View style={s.cardTop}>
+                <Text style={[s.cardTitle, { color: cfg.color }]}>{cfg.title}</Text>
+                <View style={[s.cardBadge, { backgroundColor: cfg.color + '18' }]}>
+                  <Text style={[s.cardBadgeTxt, { color: cfg.color }]}>{cfg.badge}</Text>
+                </View>
+              </View>
+              {(bogan.date || bogan.time) ? (
+                <Text style={s.cardDateTime}>{dateLabel}{bogan.date && bogan.time ? '  ' : ''}{bogan.time}</Text>
+              ) : null}
+              {bogan.reason ? <Text style={s.cardReason}>{bogan.reason}</Text> : null}
+              <TouchableOpacity
+                style={[s.cardCta, { backgroundColor: cfg.color }]}
+                onPress={() => router.push('/(tabs)/schedule' as any)}
+                activeOpacity={0.8}
+              >
+                <Text style={s.cardCtaTxt}>{cfg.cta}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={s.cardTime}>{fmt(item.created_at)}</Text>
+          </View>
+        </>
+      );
+    }
+
+    const isMe = item.sender_type === 'member';
     return (
       <>
-        {showDate && (
-          <View style={s.dateDivider}><Text style={s.dateText}>{fmtDate(item.created_at)}</Text></View>
-        )}
+        {dateDivider}
         <View style={[s.row, isMe ? s.rowMe : s.rowThem]}>
           {!isMe && <View style={s.avatar}><Text style={s.avatarTxt}>코</Text></View>}
           <View style={[s.bubble, isMe ? s.bubbleMe : s.bubbleThem]}>
@@ -192,4 +263,22 @@ const s = StyleSheet.create({
   input: { flex: 1, fontSize: 15, color: Colors.foreground, backgroundColor: Colors.background, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, maxHeight: 100 },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
   sendBtnOff: { backgroundColor: Colors.iconMuted },
+  // 보강 신청 카드
+  cardWrap: { alignItems: 'center', marginBottom: 12, gap: 4 },
+  card: {
+    width: '80%', backgroundColor: '#fff', borderRadius: 16,
+    borderTopWidth: 3, padding: 16,
+    shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 }, elevation: 3,
+    gap: 8,
+  },
+  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardTitle: { fontSize: 14, fontWeight: '700' },
+  cardBadge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  cardBadgeTxt: { fontSize: 12, fontWeight: '700' },
+  cardDateTime: { fontSize: 13, color: Colors.foreground, fontWeight: '500' },
+  cardReason: { fontSize: 13, color: Colors.mutedFg, lineHeight: 18 },
+  cardCta: { borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 4 },
+  cardCtaTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  cardTime: { fontSize: 11, color: Colors.placeholder },
 });

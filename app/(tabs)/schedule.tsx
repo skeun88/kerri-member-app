@@ -238,6 +238,12 @@ function MakeupTab({ memberId, coachId, lessonDuration }: { memberId: string|nul
       ).catch(() => {});
     }
 
+    // 채팅에 신청 대기 시스템 카드 삽입
+    supabase.from('messages').insert({
+      coach_id: coachId, member_id: memberId, sender_type: 'system',
+      content: JSON.stringify({ _kerri: 'bogan', status: 'pending', date: selectedDate, time: startTimeFull.slice(0, 5), rid: inserted.id }),
+    }).then(() => {});
+
     setBookingModal(false);
     setBookingSlot(null);
     setBookingMsg('');
