@@ -683,7 +683,7 @@ export default function ScheduleScreen() {
       .select('id, created_at, lesson_comparison, next_goals, achievements, improvement_points')
       .eq('member_id', mem.id)
       .order('created_at', { ascending: false })
-      .limit(30);
+      .limit(50);
     if (planError) {
       if (token !== loadTokenRef.current) return;
       setLoading(false);
