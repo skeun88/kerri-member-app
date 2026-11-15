@@ -261,7 +261,7 @@ export default function NotificationsScreen() {
                   if (ref) swipeableRefs.current.set(notif.id, ref);
                   else swipeableRefs.current.delete(notif.id);
                 }}
-                renderLeftActions={() => (
+                renderRightActions={() => (
                   <TouchableOpacity
                     style={styles.deleteAction}
                     onPress={() => deleteNotification(notif.id)}
@@ -273,8 +273,8 @@ export default function NotificationsScreen() {
                   </TouchableOpacity>
                 )}
                 friction={2}
-                leftThreshold={60}
-                overshootLeft={false}
+                rightThreshold={60}
+                overshootRight={false}
                 onSwipeableWillOpen={() => {
                   closeOpenSwipeable(notif.id);
                   openSwipeableId.current = notif.id;

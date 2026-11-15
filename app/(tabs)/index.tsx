@@ -1248,7 +1248,7 @@ export default function HomeScreen() {
                               if (ref) notifSwipeableRefs.current.set(notif.id, ref);
                               else notifSwipeableRefs.current.delete(notif.id);
                             }}
-                            renderLeftActions={() => (
+                            renderRightActions={() => (
                               <TouchableOpacity
                                 style={styles.notifDeleteAction}
                                 onPress={() => deletePopupNotification(notif.id)}
@@ -1259,8 +1259,8 @@ export default function HomeScreen() {
                               </TouchableOpacity>
                             )}
                             friction={2}
-                            leftThreshold={60}
-                            overshootLeft={false}
+                            rightThreshold={60}
+                            overshootRight={false}
                             onSwipeableWillOpen={() => {
                               closeOpenNotifSwipeable(notif.id);
                               openNotifSwipeableId.current = notif.id;
