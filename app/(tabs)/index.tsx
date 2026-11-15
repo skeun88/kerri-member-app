@@ -5,7 +5,7 @@ import {
   SafeAreaView, Image, Linking, Modal, Dimensions,
   TouchableWithoutFeedback, Platform, LayoutAnimation, UIManager,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -1220,7 +1220,7 @@ export default function HomeScreen() {
               const left = getNotifPopoverLeft(notifPopoverAnchor);
               return (
                 <TouchableWithoutFeedback>
-                  <View style={[styles.notifPopover, { top: notifPopoverAnchor.y, left, width: popW }]}>
+                  <GestureHandlerRootView style={[styles.notifPopover, { top: notifPopoverAnchor.y, left, width: popW }]}>
                     {/* Arrow top-right */}
                     <View style={[styles.popoverArrow, { left: popW - 28 }]} />
 
@@ -1287,7 +1287,7 @@ export default function HomeScreen() {
                         ))}
                       </ScrollView>
                     )}
-                  </View>
+                  </GestureHandlerRootView>
                 </TouchableWithoutFeedback>
               );
             })()}
