@@ -1314,7 +1314,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: BG },
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 16 },
+  scrollContent: { paddingBottom: 100 },
   center: { justifyContent: 'center', alignItems: 'center' },
 
   // Header

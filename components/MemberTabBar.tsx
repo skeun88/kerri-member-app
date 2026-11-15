@@ -7,11 +7,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
-const TERRA = '#C0755A';
-const TERRA_CAPSULE = '#F4E5DC';
+// ── 디자인 토큰 (코치앱 GlassTabBar 동일 값) ─────────────────
+const MARGIN_H = 16;
+const BOTTOM_GAP = 0;
+const RADIUS = 32;
+const GLASS_BG = 'rgba(255,255,255,0.76)';
+const GLASS_BG_OPAQUE = 'rgba(252,248,244,0.98)';
+const BORDER_HL = 'rgba(255,255,255,0.65)';
+const ACTIVE = '#C0755A';
 const INACTIVE = '#8C8782';
-const BAR_HEIGHT = 62;
-const ANIM_MS = 180;
+const CAPSULE_BG = 'rgba(192,117,90,0.12)';
+const CAPSULE_INSET_V = 6;
+const ANIM_MS = 200;
+
+export const FLOATING_TAB_BAR_SPACE = 70 + BOTTOM_GAP;
 
 type TabDef = {
   name: string;
@@ -21,39 +30,43 @@ type TabDef = {
 };
 
 const TABS: TabDef[] = [
-  { name: 'index', label: '홈', icon: 'home', iconOutline: 'home-outline' },
-  { name: 'schedule', label: '레슨', icon: 'calendar', iconOutline: 'calendar-outline' },
-  { name: 'report', label: '레슨 기록', icon: 'document-text', iconOutline: 'document-text-outline' },
-  { name: 'profile', label: '마이', icon: 'person', iconOutline: 'person-outline' },
+  { name: 'index',    label: '홈',      icon: 'home',          iconOutline: 'home-outline' },
+  { name: 'schedule', label: '레슨',    icon: 'calendar',      iconOutline: 'calendar-outline' },
+  { name: 'report',   label: '레슨 기록', icon: 'document-text', iconOutline: 'document-text-outline' },
+  { name: 'profile',  label: '마이',    icon: 'person',        iconOutline: 'person-outline' },
 ];
 
 export default function MemberTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const [keyboardUp, setKeyboardUp] = useState(false);
 
   const isSmall = width <= 390;
-  const barHeight = isSmall ? 58 : 62;
-  const iconSize = isSmall ? 20 : 22;
-  const labelSize = isSmall ? 10 : 11;
-  // 안드로이드: insets.bottom이 0으로 오는 경우 최소 패딩 보장
+  const barHeight = isSmall ? 58 : 70;
+  const iconSize = isSmall ? 20 : 24;
+  const labelSize = isSmall ? 10 : 11.5;
   const bottomPad = Platform.OS === 'android'
     ? Math.max(insets.bottom, 8)
     : insets.bottom;
 
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [reduceTransparency, setReduceTransparency] = useState(false);
+  const [keyboardUp, setKeyboardUp] = useState(false);
+
   const activeRouteName = state.routes[state.index]?.name;
   const activeIndex = Math.max(0, TABS.findIndex(t => t.name === activeRouteName));
-  const tabWidth = width / TABS.length;
-  const capsuleWidth = tabWidth * 0.65;
 
-  const capsuleX = useRef(new Animated.Value(activeIndex * tabWidth + tabWidth / 2 - capsuleWidth / 2)).current;
+  const innerWidth = width - MARGIN_H * 2;
+  const tabWidth = innerWidth / TABS.length;
+  const translateX = useRef(new Animated.Value(activeIndex * tabWidth)).current;
 
   useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then(v => mounted && setReduceMotion(v));
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => { mounted = false; sub?.remove?.(); };
+    const rm = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    const rt = (AccessibilityInfo as any).isReduceTransparencyEnabled?.();
+    if (rt?.then) rt.then((v: boolean) => mounted && setReduceTransparency(v));
+    const rtSub = (AccessibilityInfo as any).addEventListener?.('reduceTransparencyChanged', setReduceTransparency);
+    return () => { mounted = false; rm?.remove?.(); rtSub?.remove?.(); };
   }, []);
 
   useEffect(() => {
@@ -65,37 +78,56 @@ export default function MemberTabBar({ state, navigation }: BottomTabBarProps) {
   }, []);
 
   useEffect(() => {
-    const target = activeIndex * tabWidth + tabWidth / 2 - capsuleWidth / 2;
-    if (reduceMotion) { capsuleX.setValue(target); return; }
-    Animated.timing(capsuleX, { toValue: target, duration: ANIM_MS, useNativeDriver: true }).start();
-  }, [activeIndex, tabWidth, capsuleWidth]);
+    const target = activeIndex * tabWidth;
+    if (reduceMotion) { translateX.setValue(target); return; }
+    Animated.timing(translateX, {
+      toValue: target,
+      duration: ANIM_MS,
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex, tabWidth, reduceMotion]);
 
   if (keyboardUp) return null;
 
+  const bgColor = reduceTransparency ? GLASS_BG_OPAQUE : GLASS_BG;
+
   return (
-    <View style={[styles.container, { paddingBottom: bottomPad }]}>
-      <View style={[styles.bar, { height: barHeight }]}>
-        {/* Animated capsule behind active icon */}
+    <View
+      style={[styles.wrap, { paddingBottom: bottomPad + BOTTOM_GAP }]}
+      pointerEvents="box-none"
+    >
+      <View style={[styles.bar, { height: barHeight, backgroundColor: bgColor }]}>
+        {/* 이동하는 선택 캡슐 */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.capsule,
-            { width: capsuleWidth, height: barHeight - 16, transform: [{ translateX: capsuleX }] },
+            {
+              width: tabWidth - 12,
+              top: CAPSULE_INSET_V,
+              bottom: CAPSULE_INSET_V,
+              transform: [{ translateX }],
+              left: 6,
+            },
           ]}
         />
         {TABS.map((tab) => {
           const route = state.routes.find(r => r.name === tab.name);
           if (!route) return null;
           const focused = activeRouteName === tab.name;
-          const color = focused ? TERRA : INACTIVE;
+          const color = focused ? ACTIVE : INACTIVE;
+
+          const onPress = () => {
+            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            if (!focused && !event.defaultPrevented) navigation.navigate(route.name as never);
+          };
+          const onLongPress = () => navigation.emit({ type: 'tabLongPress', target: route.key });
+
           return (
             <Pressable
               key={tab.name}
-              onPress={() => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!focused && !event.defaultPrevented) navigation.navigate(route.name as never);
-              }}
-              onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+              onPress={onPress}
+              onLongPress={onLongPress}
               style={styles.tab}
               hitSlop={{ top: 8, bottom: 8 }}
               accessibilityRole="button"
@@ -113,31 +145,40 @@ export default function MemberTabBar({ state, navigation }: BottomTabBarProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E8EBEF',
+  wrap: {
+    position: 'absolute',
+    left: MARGIN_H,
+    right: MARGIN_H,
+    bottom: 0,
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    position: 'relative',
+    borderRadius: RADIUS,
+    borderWidth: 1,
+    borderColor: BORDER_HL,
+    overflow: 'hidden',
+    shadowColor: '#3E2B22',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
   },
   capsule: {
     position: 'absolute',
-    top: 8,
-    borderRadius: 16,
-    backgroundColor: TERRA_CAPSULE,
+    borderRadius: 999,
+    backgroundColor: CAPSULE_BG,
   },
   tab: {
     flex: 1,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    height: '100%',
+    gap: 4,
     minHeight: 44,
   },
   label: {
+    fontSize: 11.5,
     fontWeight: '600',
   },
 });
