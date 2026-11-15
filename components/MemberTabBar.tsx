@@ -3,6 +3,7 @@ import {
   View, Text, Pressable, Animated, StyleSheet, Platform,
   useWindowDimensions, Keyboard, AccessibilityInfo,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -89,57 +90,67 @@ export default function MemberTabBar({ state, navigation }: BottomTabBarProps) {
 
   if (keyboardUp) return null;
 
-  const bgColor = reduceTransparency ? GLASS_BG_OPAQUE : GLASS_BG;
+  const barContent = (
+    <>
+      {/* 이동하는 선택 캡슐 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.capsule,
+          {
+            width: tabWidth - 12,
+            top: CAPSULE_INSET_V,
+            bottom: CAPSULE_INSET_V,
+            transform: [{ translateX }],
+            left: 6,
+          },
+        ]}
+      />
+      {TABS.map((tab) => {
+        const route = state.routes.find(r => r.name === tab.name);
+        if (!route) return null;
+        const focused = activeRouteName === tab.name;
+        const color = focused ? ACTIVE : INACTIVE;
+
+        const onPress = () => {
+          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+          if (!focused && !event.defaultPrevented) navigation.navigate(route.name as never);
+        };
+        const onLongPress = () => navigation.emit({ type: 'tabLongPress', target: route.key });
+
+        return (
+          <Pressable
+            key={tab.name}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            style={styles.tab}
+            hitSlop={{ top: 8, bottom: 8 }}
+            accessibilityRole="button"
+            accessibilityState={focused ? { selected: true } : {}}
+            accessibilityLabel={tab.label}
+          >
+            <Ionicons name={focused ? tab.icon : tab.iconOutline} size={iconSize} color={color} />
+            <Text style={[styles.label, { color, fontSize: labelSize }]} numberOfLines={1}>{tab.label}</Text>
+          </Pressable>
+        );
+      })}
+    </>
+  );
 
   return (
     <View
       style={[styles.wrap, { paddingBottom: bottomPad + BOTTOM_GAP }]}
       pointerEvents="box-none"
     >
-      <View style={[styles.bar, { height: barHeight, backgroundColor: bgColor }]}>
-        {/* 이동하는 선택 캡슐 */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.capsule,
-            {
-              width: tabWidth - 12,
-              top: CAPSULE_INSET_V,
-              bottom: CAPSULE_INSET_V,
-              transform: [{ translateX }],
-              left: 6,
-            },
-          ]}
-        />
-        {TABS.map((tab) => {
-          const route = state.routes.find(r => r.name === tab.name);
-          if (!route) return null;
-          const focused = activeRouteName === tab.name;
-          const color = focused ? ACTIVE : INACTIVE;
-
-          const onPress = () => {
-            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-            if (!focused && !event.defaultPrevented) navigation.navigate(route.name as never);
-          };
-          const onLongPress = () => navigation.emit({ type: 'tabLongPress', target: route.key });
-
-          return (
-            <Pressable
-              key={tab.name}
-              onPress={onPress}
-              onLongPress={onLongPress}
-              style={styles.tab}
-              hitSlop={{ top: 8, bottom: 8 }}
-              accessibilityRole="button"
-              accessibilityState={focused ? { selected: true } : {}}
-              accessibilityLabel={tab.label}
-            >
-              <Ionicons name={focused ? tab.icon : tab.iconOutline} size={iconSize} color={color} />
-              <Text style={[styles.label, { color, fontSize: labelSize }]} numberOfLines={1}>{tab.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {Platform.OS === 'ios' && !reduceTransparency ? (
+        <BlurView intensity={60} tint="light" style={[styles.bar, { height: barHeight }]}>
+          {barContent}
+        </BlurView>
+      ) : (
+        <View style={[styles.bar, { height: barHeight, backgroundColor: reduceTransparency ? GLASS_BG_OPAQUE : GLASS_BG }]}>
+          {barContent}
+        </View>
+      )}
     </View>
   );
 }
