@@ -41,12 +41,17 @@ interface CoachReport {
   coach_name: string | null;
 }
 
+const COLOR_COMPARISON = '#8066A8'; // 이전 레슨 대비 변화 — 퍼플
+const COLOR_ACHIEVEMENT = '#32865C'; // 오늘 잘한 점 — 그린
+const COLOR_IMPROVEMENT = '#A87513'; // 교정 포인트 — 앰버 옐로
+const COLOR_GOAL        = '#4169A8'; // 다음 레슨 목표 — 블루
+
 // ── Section header with icon ───────────────────────────────────
-function SectionHead({ icon, title }: { icon: string; title: string }) {
+function SectionHead({ icon, title, color = TERRA }: { icon: string; title: string; color?: string }) {
   return (
     <View style={styles.sectionHead}>
-      <Ionicons name={icon as any} size={14} color={TERRA} />
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Ionicons name={icon as any} size={14} color={color} />
+      <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
     </View>
   );
 }
@@ -368,7 +373,7 @@ export default function ReportScreen() {
                         if (report.lesson_comparison && report.lesson_comparison.length > 0) {
                           secs.push({ key: 'comparison', node: (
                             <View style={styles.section}>
-                              <SectionHead icon="trending-up-outline" title="이전 레슨 대비 변화" />
+                              <SectionHead icon="trending-up-outline" title="이전 레슨 대비 변화" color={COLOR_COMPARISON} />
                               {report.lesson_comparison.slice(0, 3).map((c, i) => {
                                 const isImproved = c.status === 'improved';
                                 const isNeedsWork = c.status === 'needs_work' || c.status === 'regressed';
@@ -392,10 +397,10 @@ export default function ReportScreen() {
                         if (achievements.length > 0) {
                           secs.push({ key: 'achievements', node: (
                             <View style={styles.section}>
-                              <SectionHead icon="checkmark-circle-outline" title="오늘 잘한 점" />
+                              <SectionHead icon="checkmark-circle-outline" title="오늘 잘한 점" color={COLOR_ACHIEVEMENT} />
                               {achievements.map((item, i) => (
                                 <View key={i} style={styles.listRow}>
-                                  <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                                  <Text style={[styles.listNum, { color: COLOR_ACHIEVEMENT }]}>{String(i + 1).padStart(2, '0')}</Text>
                                   <Text style={styles.listText}>{item}</Text>
                                 </View>
                               ))}
@@ -406,10 +411,10 @@ export default function ReportScreen() {
                         if (improvements.length > 0) {
                           secs.push({ key: 'improvements', node: (
                             <View style={styles.section}>
-                              <SectionHead icon="construct-outline" title="교정 포인트" />
+                              <SectionHead icon="construct-outline" title="교정 포인트" color={COLOR_IMPROVEMENT} />
                               {improvements.map((item, i) => (
                                 <View key={i} style={styles.listRow}>
-                                  <Text style={styles.listNum}>{String(i + 1).padStart(2, '0')}</Text>
+                                  <Text style={[styles.listNum, { color: COLOR_IMPROVEMENT }]}>{String(i + 1).padStart(2, '0')}</Text>
                                   <Text style={styles.listText}>{item}</Text>
                                 </View>
                               ))}
@@ -428,12 +433,12 @@ export default function ReportScreen() {
                             {nextGoals.length > 0 && (
                               <View style={[styles.goalSection, secs.length > 0 && { marginTop: 20 }]}>
                                 <View style={styles.goalHeader}>
-                                  <Ionicons name="locate-outline" size={14} color={TERRA} />
-                                  <Text style={styles.goalTitle}>다음 레슨 목표</Text>
+                                  <Ionicons name="locate-outline" size={14} color={COLOR_GOAL} />
+                                  <Text style={[styles.goalTitle, { color: COLOR_GOAL }]}>다음 레슨 목표</Text>
                                 </View>
                                 {nextGoals.map((item, i) => (
                                   <View key={i} style={styles.listRow}>
-                                    <Text style={[styles.listNum, { color: TERRA }]}>{String(i + 1).padStart(2, '0')}</Text>
+                                    <Text style={[styles.listNum, { color: COLOR_GOAL }]}>{String(i + 1).padStart(2, '0')}</Text>
                                     <Text style={styles.goalText}>{item}</Text>
                                   </View>
                                 ))}
