@@ -175,7 +175,7 @@ export default function CoachChatScreen() {
               {bogan.reason ? <Text style={s.cardReason}>{bogan.reason}</Text> : null}
               <TouchableOpacity
                 style={[s.cardCta, { backgroundColor: cfg.color }]}
-                onPress={() => router.push('/(tabs)/schedule' as any)}
+                onPress={() => router.replace({ pathname: '/(tabs)/schedule', params: { date: bogan.date } } as any)}
                 activeOpacity={0.8}
               >
                 <Text style={s.cardCtaTxt}>{cfg.cta}</Text>
