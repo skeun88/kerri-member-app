@@ -32,7 +32,8 @@
       "expo-router",
       "expo-font",
       "expo-asset",
-      "expo-notifications"
+      "expo-notifications",
+      "./plugins/withPortraitOptional"
     ],
     "extra": {
       "router": {},
