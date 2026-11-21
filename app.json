@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.kerri.memberapp",
-      "versionCode": 12
+      "versionCode": 13
     },
     "web": {
       "favicon": "./assets/favicon.png"
