@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 const RC_API_KEY_IOS = 'appl_ZhygbWObQrWKqWnaBasIVAIJtfD';
-const RC_API_KEY_ANDROID = 'goog_REPLACE_WITH_REAL_ANDROID_KEY';
+const RC_API_KEY_ANDROID = 'goog_tRGWSdVQsvEpDFNYzREOISBzduF';
 
 export const ENTITLEMENT_PRO = 'pro';
 export const ENTITLEMENT_BASIC = 'basic';
